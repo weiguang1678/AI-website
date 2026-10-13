@@ -24,9 +24,14 @@ jobs:
         include:
           - os: windows-latest
             target: win-x64
-          - os: macos-13 # Intel —— 别改成 macos-latest，那个现在是 arm64
+          # 两个 macOS 目标都跑在 macos-14（Apple Silicon）上 —— 包括 x64 那个。
+          # 打包这一步不编任何东西：x64 的 Node 运行时是从 nodejs.org 下载的 tar 包，
+          # pkgbuild 也只是照着目录树封包，跟宿主是哪个架构没关系。
+          # 别为了「x64 就该在 Intel 机器上打」改用 macos-13：那批 Intel runner 已经很
+          # 边缘了，实测排队 20 分钟都等不到机器，而 release job 要等所有构建完成才发。
+          - os: macos-14
             target: mac-x64
-          - os: macos-14 # Apple Silicon
+          - os: macos-14
             target: mac-arm64
           - os: ubuntu-latest
             target: linux-x64
@@ -88,7 +93,13 @@ jobs:
           (cd dist && sha256sum *.zip *.exe *.tar.gz *.pkg *.deb > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
 
+          # 用变量是为了下面那条 || 兜底能复用同一份文件列表（这里要 glob 展开，别加引号）
+          files="dist/*.zip dist/*.exe dist/*.tar.gz dist/*.pkg dist/*.deb dist/SHA256SUMS.txt"
+
+          # 万一这个 tag 下已经有 Release 了（比如某次运行的 job 卡在排队里、后来才跑完），
+          # 就改成覆盖附件，别让整个 job 因为「已存在」而挂掉
           gh release create "${GITHUB_REF_NAME}" \
             --title "AI 问答网站 ${GITHUB_REF_NAME}" \
             --notes-file packaging/release-notes.md \
-            dist/*.zip dist/*.exe dist/*.tar.gz dist/*.pkg dist/*.deb dist/SHA256SUMS.txt
+            $files \
+          || gh release upload "${GITHUB_REF_NAME}" --clobber $files
