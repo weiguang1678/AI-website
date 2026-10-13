@@ -5,6 +5,24 @@
 
 ---
 
+## 直接下载安装包（不想自己配环境）
+
+到 [Releases](https://github.com/weiguang1678/AI-website/releases) 下载对应系统的安装包 ——
+**每个包里都自带一份官方 Node 运行时，不需要你自己装 Node.js**：
+
+| 系统 | 用哪个文件 |
+| --- | --- |
+| Windows 10/11 | `AI-Website-Setup-<版本>.exe` 双击安装；想免安装就用 `...-win-x64.zip`，解压后双击 `启动网站.cmd` |
+| macOS | `AI-Website-<版本>-macos-arm64.pkg`（Apple 芯片）或 `-macos-x64.pkg`（Intel） |
+| Debian / Ubuntu | `AI-Website-<版本>-linux-x64.deb`；其他发行版用 `...-linux-x64.tar.gz` |
+
+这些包**都没做代码签名**，所以 Windows 的 SmartScreen 和 macOS 的 Gatekeeper 会各弹一次
+警告，放行的办法和每个文件的详细说明都写在 Release 页面里。
+
+下面这一节是自己从源码跑的路线。
+
+---
+
 ## 快速开始
 
 ```bash

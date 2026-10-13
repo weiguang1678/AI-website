@@ -6,3 +6,7 @@ data/
 
 .DS_Store
 Thumbs.db
+
+# 打包产物与构建缓存：里面有一份下载来的 Node 运行时和组装出来的程序目录，
+# 几百 MB，进了 git 历史就再也去不掉。真正要发布的东西走 GitHub Release，不进仓库。
+dist/
