@@ -21,8 +21,10 @@ out="${2:-dist}"
 cd "$(dirname "$0")/.." # 回到项目根
 
 # 不从 package.json 里 require 版本号：这个包是 ESM（"type": "module"），
-# `node -p "require(...)"` 在不同 Node 版本上行为不一样，读一行文本最稳。
-version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
+# `node -p "require(...)"` 在不同 Node 版本上行为不一样，读文本最稳。
+# 用 p;q 在第一个匹配处就收工 —— 前面挂个 `| head -1` 的话，sed 在长输出上会被
+# SIGPIPE 掉，配上脚本开头的 pipefail 就是一个莫名其妙的非零退出。
+version=$(sed -n '/^ *"version": *"/{s/.*"version": *"\([^"]*\)".*/\1/;p;q;}' package.json)
 [ -n "$version" ] || { echo "读不出 package.json 里的 version" >&2; exit 1; }
 base="AI-Website-$version"
 
