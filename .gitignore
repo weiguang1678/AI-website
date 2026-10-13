@@ -1,0 +1,8 @@
+node_modules/
+
+# 运行时数据：含秘钥与 API Key，绝对不要提交
+data/
+*.log
+
+.DS_Store
+Thumbs.db

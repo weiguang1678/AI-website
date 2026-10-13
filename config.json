@@ -1,0 +1,7 @@
+{
+  "port": 3000,
+  "host": "0.0.0.0",
+  "adminInitialPassword": "admin123",
+  "dataDir": "./data",
+  "sessionTtlHours": 12
+}

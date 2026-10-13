@@ -1,0 +1,469 @@
+/* ============ 设计变量 ============ */
+:root {
+  --bg: #f6f7f9;
+  --bg-glow-1: #c7d2fe;
+  --bg-glow-2: #ddd6fe;
+  --surface: #ffffff;
+  --surface-2: #f2f3f6;
+  --surface-3: #e9ebf0;
+  --border: #e3e5ea;
+  --border-strong: #d2d6de;
+  --text: #14161a;
+  --text-2: #4a4f5a;
+  --muted: #8b909b;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --shadow-sm: 0 1px 2px rgba(16, 20, 30, .06);
+  --shadow-md: 0 4px 16px rgba(16, 20, 30, .08);
+  --shadow-lg: 0 24px 60px -20px rgba(16, 20, 30, .28);
+  --radius: 12px;
+  --radius-lg: 18px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+          "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1014;
+    --bg-glow-1: #1e1b4b;
+    --bg-glow-2: #312e81;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --surface-3: #262b36;
+    --border: #272c36;
+    --border-strong: #363c48;
+    --text: #e9ebef;
+    --text-2: #b3b9c5;
+    --muted: #7c838f;
+    --accent: #6366f1;
+    --accent-hover: #7c7ff5;
+    --accent-soft: #1e2140;
+    --danger: #f87171;
+    --danger-soft: #2a1a1c;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, .7);
+  }
+}
+
+/* ============ 基础 ============ */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* 触屏：去掉点击时的蓝色高亮，并禁用双击缩放带来的 300ms 延迟 */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+.hidden { display: none !important; }
+button { font-family: inherit; cursor: pointer; }
+input, textarea { font-family: inherit; }
+::selection { background: var(--accent); color: #fff; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ 等待 ============ */
+/* 背景留空，让 motion.css 里 body::before 的动态光晕透上来 */
+.boot { position: fixed; inset: 0; display: grid; place-items: center; background: transparent; z-index: 100; }
+.boot.hidden { display: none; }
+.spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2.5px solid var(--border-strong); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============ 通用按钮 ============ */
+.btn {
+  border: 1px solid transparent; border-radius: 10px; padding: 10px 16px;
+  font-size: 14px; font-weight: 500; transition: background .15s, border-color .15s, transform .06s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-block { width: 100%; padding: 12px; font-size: 15px; }
+.btn-ghost { background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-3); }
+.btn-danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-sm { padding: 6px 11px; font-size: 13px; border-radius: 8px; }
+
+/* --bd 是方块边长，所有尺寸都从它推导。
+   同一个 .brand-badge 在秘钥页是 56px、空状态是 62px、横屏矮屏只有 42px，
+   写死尺寸就得每加一处配一套，改尺寸只要改 --bd。
+   圆角比例 16/56 必须和 admin.js 的 ICON_RADIUS_RATIO 一致 —— 那是烤进 PNG 里的，
+   两边的圆角一样大，图片的透明边角才会正好被裁掉、不露出底色。 */
+.brand-badge {
+  --bd: 56px;
+  width: var(--bd); height: var(--bd); border-radius: calc(var(--bd) * .2857);
+  display: grid; place-items: center; overflow: hidden;
+  background: linear-gradient(135deg, #6366f1, #a855f7 55%, #ec4899);
+  color: #fff; font-weight: 700;
+  /* 字号和底色都是给「还没换上图」那一小段留的：index.html 里写死的 <div>AI</div>
+     和后台闪屏那个一直没被替换的 boot-badge 都是文字。
+     图片通常已经在缓存里了 —— 服务端拿 /api/icon 当 favicon，浏览器早就要过一次。 */
+  font-size: calc(var(--bd) * .393);
+  letter-spacing: calc(var(--bd) * .009);
+  box-shadow: 0 10px 26px -8px rgba(99, 102, 241, .7);
+}
+.brand-badge.small { --bd: 30px; box-shadow: none; }
+/* 装上 /api/icon 那张图之后底色就得撤：自定义图标可能是内部透明的 logo，
+   垫着渐变会从透明处透出来。见 app.js renderBadge。 */
+.brand-badge.has-icon { background: none; }
+.brand-badge img {
+  width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit;
+}
+
+/* ============ 秘钥验证 ============ */
+/* 同样不留底色：原来那层静态光晕 .gate::before 已经删掉，
+   换成 motion.css 里全局的动态 body::before（否则会把光晕整个盖住） */
+.gate {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 24px;
+  background: transparent; overflow-y: auto;
+}
+.gate-card {
+  position: relative; width: 100%; max-width: 400px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 22px; padding: 38px 32px 26px;
+  box-shadow: var(--shadow-lg);
+}
+/* 卡片整体 + 内部逐件的入场动画都在 motion.css 的「四、秘钥验证」一节，
+   用 .gate-card 里的元素选择器写死延迟，不在这里挂 animation */
+.gate-brand { text-align: center; margin-bottom: 28px; }
+.gate-brand .brand-badge { margin: 0 auto 16px; }
+.gate-brand h1 { margin: 0 0 6px; font-size: 21px; font-weight: 650; letter-spacing: -.2px; }
+.gate-sub { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+.code-input { display: flex; gap: 9px; justify-content: center; margin-bottom: 6px; }
+.code-cell {
+  width: 100%; max-width: 54px; aspect-ratio: 1 / 1.1; text-align: center;
+  font-size: 24px; font-weight: 650; font-family: var(--mono); text-transform: uppercase;
+  color: var(--text); background: var(--surface-2);
+  border: 1.5px solid var(--border); border-radius: 12px; outline: none;
+  transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
+  caret-color: var(--accent); padding: 0;
+}
+.code-cell:focus {
+  border-color: var(--accent); background: var(--surface);
+  box-shadow: 0 0 0 3.5px var(--accent-soft); transform: translateY(-2px);
+}
+.code-cell.filled { border-color: var(--border-strong); }
+/* 抖动改由 motion.css 逐格错峰播放（.code-input.shake .code-cell），
+   shake 关键帧仍然在这里定义、被复用 */
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-6px); } 40%, 60% { transform: translateX(6px); }
+}
+
+.gate-error {
+  min-height: 20px; margin: 10px 0 14px; text-align: center;
+  color: var(--danger); font-size: 13px; line-height: 1.4;
+}
+.gate-foot { margin: 18px 0 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+/* ============ 布局 ============ */
+.app { display: flex; height: 100vh; height: 100dvh; }
+
+/* 侧边栏 */
+.sidebar {
+  width: 264px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: var(--surface); border-right: 1px solid var(--border);
+  transition: transform .25s cubic-bezier(.16, 1, .3, 1);
+}
+.side-head {
+  display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px;
+  font-weight: 600; font-size: 14.5px;
+}
+.side-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-new {
+  margin: 0 14px 14px; padding: 10px; border-radius: 10px;
+  background: var(--accent); color: #fff; font-size: 14px; font-weight: 500;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.btn-new:hover { background: var(--accent-hover); }
+.history { flex: 1; overflow-y: auto; padding: 0 10px 10px; }
+.hist-label { font-size: 11.5px; color: var(--muted); padding: 10px 8px 6px; font-weight: 600; letter-spacing: .4px; }
+.hist-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 9px 10px; border-radius: 9px; border: none; background: transparent;
+  color: var(--text-2); font-size: 13.5px; margin-bottom: 1px;
+  transition: background .12s, color .12s;
+}
+.hist-item:hover { background: var(--surface-2); color: var(--text); }
+.hist-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.hist-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.hist-item .del { opacity: 0; color: var(--muted); flex-shrink: 0; display: grid; place-items: center; border-radius: 5px; padding: 2px; }
+.hist-item:hover .del { opacity: 1; }
+.hist-item .del:hover { color: var(--danger); background: var(--danger-soft); }
+.hist-empty { color: var(--muted); font-size: 12.5px; padding: 8px 10px; }
+.side-foot { padding: 10px 14px 14px; border-top: 1px solid var(--border); }
+.side-btn {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+  border: none; background: transparent; color: var(--muted); font-size: 13.5px; border-radius: 9px;
+}
+.side-btn:hover { background: var(--surface-2); color: var(--text); }
+/* 退出登录：位置不变，但要有颜色、有底色，一眼就能找到 */
+.side-btn-exit {
+  margin-top: 8px; font-weight: 500;
+  color: var(--danger); background: var(--danger-soft);
+}
+.side-btn-exit:hover { background: var(--danger); color: #fff; }
+.side-btn-exit svg { flex-shrink: 0; }
+
+/* 聊天区 */
+.chat { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.chat-head {
+  display: flex; align-items: center; gap: 10px; padding: 13px 20px;
+  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(12px); z-index: 5;
+}
+.chat-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14.5px; flex: 1; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.preview-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent);
+}
+.icon-btn {
+  width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px;
+  border: none; background: transparent; color: var(--muted); transition: background .12s, color .12s;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.only-mobile { display: none; }
+
+.messages { flex: 1; overflow-y: auto; padding: 28px 20px 8px; scroll-behavior: smooth; }
+/* 入场动画不在这里挂：消息列表是整块重建的，默认挂会每次重绘都重放。
+   改由 app.js 用 WeakSet 挑出「本次新增」的消息加 .msg-enter，规则见 motion.css */
+.msg { max-width: 760px; margin: 0 auto 22px; display: flex; gap: 13px; }
+.msg.user { flex-direction: row-reverse; }
+.avatar {
+  --bd: 30px;
+  /* 圆角照 .2857 走，和 admin.js 烤进 PNG 的 ICON_RADIUS_RATIO 一致 ——
+     照 .3 裁的话四个角上会各差 0.4px，露出底下的页面背景 */
+  width: var(--bd); height: var(--bd); border-radius: calc(var(--bd) * .2857);
+  flex-shrink: 0; display: grid; place-items: center; overflow: hidden;
+  /* 用户那条消息的头像还是个「我」字，字号照旧由 --bd 推出来 */
+  font-size: calc(var(--bd) * .393); font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+}
+.msg.user .avatar { background: var(--surface-3); color: var(--text-2); }
+/* AI 那条放的是和标签页同一张 PNG，理由同 .brand-badge.has-icon */
+.avatar.has-icon { background: none; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+.bubble {
+  padding: 11px 15px; border-radius: 15px; font-size: 14.8px; line-height: 1.72;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  min-width: 0; overflow-wrap: anywhere;
+}
+.msg.user .bubble { background: var(--accent); color: #fff; border-color: transparent; box-shadow: none; }
+.msg.error .bubble { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+
+.cursor { display: inline-block; width: 7px; height: 15px; background: var(--accent); border-radius: 1.5px; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.typing { display: inline-flex; gap: 4px; align-items: center; height: 20px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce 1.3s infinite; }
+.typing i:nth-child(2) { animation-delay: .18s; }
+.typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+/* 空状态 */
+.empty { max-width: 760px; margin: 0 auto; padding: 12vh 4px 0; text-align: center; }
+.empty .brand-badge { --bd: 62px; margin: 0 auto 20px; }
+.empty h2 { margin: 0 0 8px; font-size: 23px; font-weight: 650; letter-spacing: -.3px; }
+.empty p { margin: 0 auto; color: var(--muted); font-size: 14px; max-width: 420px; line-height: 1.6; }
+.chips { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; margin-top: 26px; }
+/* AI 打招呼后跟在消息列表里的推荐问题 */
+.messages > .chips { max-width: 760px; margin: 0 auto 22px; }
+.empty > .typing { margin-top: 2px; }
+/* 打字点下面紧接着就是快捷提问，别留那 26px 的大空档 */
+.empty > .typing + .chips { margin-top: 14px; }
+.chip {
+  padding: 9px 15px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); font-size: 13.5px; transition: border-color .15s, color .15s, transform .1s;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+/* 输入区 */
+/* 半透明收尾：原来是不透明 --bg，会把 body::before 的动态光晕在下沿齐刷刷切断 */
+.composer-wrap { padding: 8px 20px 16px; background: linear-gradient(to top, color-mix(in srgb, var(--bg) 88%, transparent) 55%, transparent); }
+.composer {
+  max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 9px;
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: 17px;
+  padding: 8px 8px 8px 16px; box-shadow: var(--shadow-md); transition: border-color .18s, box-shadow .18s;
+}
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3.5px var(--accent-soft); }
+.composer textarea {
+  flex: 1; border: none; outline: none; background: transparent; resize: none;
+  font-size: 15px; line-height: 1.6; color: var(--text); max-height: 190px; padding: 8px 0;
+}
+.composer textarea::placeholder { color: var(--muted); }
+.send-btn {
+  width: 36px; height: 36px; flex-shrink: 0; border-radius: 11px; border: none;
+  background: var(--accent); color: #fff; display: grid; place-items: center;
+  transition: background .15s, opacity .15s;
+}
+.send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.send-btn:disabled { opacity: .35; cursor: not-allowed; }
+/* 停止生成：和 .send-btn 同一格位置、同一副尺寸，只是底色换成警示色，
+   一眼能看出这颗按下去是「打断」而不是「提交」 */
+.stop-btn {
+  width: 36px; height: 36px; flex-shrink: 0; border-radius: 11px; border: none;
+  background: var(--danger); color: #fff; display: grid; place-items: center;
+  transition: background .15s, opacity .15s;
+}
+.stop-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 82%, #000); }
+.stop-btn:disabled { opacity: .4; cursor: not-allowed; }
+.composer-hint { max-width: 760px; margin: 8px auto 0; text-align: center; color: var(--muted); font-size: 11.5px; }
+
+/* ============ Markdown ============ */
+.md > *:first-child { margin-top: 0; }
+.md > *:last-child { margin-bottom: 0; }
+.md p { margin: 0 0 10px; }
+.md h1, .md h2, .md h3, .md h4 { margin: 18px 0 9px; font-weight: 650; line-height: 1.35; }
+.md h1 { font-size: 19px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15.5px; } .md h4 { font-size: 14.8px; }
+.md ul, .md ol { margin: 0 0 10px; padding-left: 22px; }
+.md li { margin: 4px 0; }
+.md blockquote { margin: 0 0 10px; padding: 4px 0 4px 13px; border-left: 3px solid var(--border-strong); color: var(--text-2); }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.md a:hover { border-bottom-color: var(--accent); }
+.md code {
+  font-family: var(--mono); font-size: .88em; padding: 2px 5px; border-radius: 5px;
+  background: var(--surface-3); color: inherit;
+}
+.msg.user .md code { background: rgba(255, 255, 255, .2); }
+.md table { border-collapse: collapse; width: 100%; margin: 0 0 12px; font-size: 13.8px; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--border); padding: 7px 11px; text-align: left; }
+.md th { background: var(--surface-2); font-weight: 600; }
+
+.code-block { margin: 0 0 12px; border-radius: 11px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
+.code-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px 6px 13px; font-size: 11.5px; color: var(--muted);
+  background: var(--surface-3); font-family: var(--mono); letter-spacing: .3px;
+}
+.code-head button {
+  border: none; background: transparent; color: var(--muted); font-size: 11.5px;
+  padding: 3px 8px; border-radius: 6px; transition: background .12s, color .12s; font-family: var(--font);
+}
+.code-head button:hover { background: var(--surface); color: var(--text); }
+.code-block pre { margin: 0; padding: 13px 15px; overflow-x: auto; }
+.code-block code { font-family: var(--mono); font-size: 13px; line-height: 1.65; background: none; padding: 0; white-space: pre; }
+
+/* 思考过程 */
+.reasoning { margin: 0 0 10px; border-left: 3px solid var(--border-strong); padding: 2px 0 2px 12px; color: var(--muted); font-size: 13.5px; font-style: italic; }
+
+/* ============ Toast ============ */
+.toast {
+  position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 22px);
+  background: var(--text); color: var(--bg); padding: 11px 20px; border-radius: 11px;
+  font-size: 13.5px; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none;
+  transition: opacity .25s, transform .25s; z-index: 200; max-width: 88vw;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ============ 响应式 ============ */
+@media (max-width: 820px) {
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; z-index: 40;
+    width: min(300px, 84vw); transform: translateX(-100%);
+    box-shadow: var(--shadow-lg);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .only-mobile { display: grid; }
+  /* 遮罩的样式统一在 motion.css 的 .backdrop 里（那边不带媒体查询，本来也是全局生效的）。
+     这里原来还抄了一份一模一样的 z-index: 35 —— 同一个数值两处写，早晚写歪一处，
+     而且它得跟上面 .sidebar 的 40 在同一个层叠上下文里比大小，理由见 index.html 的注释。 */
+
+  .chat-head { padding: 10px 12px; }
+  .chat-title { font-size: 14px; gap: 7px; }
+  .messages { padding: 18px 12px 4px; }
+  .msg { gap: 9px; margin-bottom: 18px; }
+  .avatar { --bd: 27px; }
+  .bubble { padding: 10px 13px; font-size: 15px; border-radius: 14px; line-height: 1.68; }
+
+  .empty { padding: 8vh 8px 0; }
+  .empty h2 { font-size: 20px; }
+  .empty .brand-badge { --bd: 54px; margin-bottom: 16px; }
+  .chips { margin-top: 20px; gap: 7px; }
+  .chip { padding: 8px 13px; font-size: 13px; }
+
+  /* iOS 上小于 16px 的输入框会在聚焦时把整页放大，这里统一提到 16px */
+  .composer textarea { font-size: 16px; }
+  .composer-wrap {
+    padding: 6px 10px 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  .composer { border-radius: 15px; padding: 6px 6px 6px 13px; }
+  .send-btn, .stop-btn { width: 40px; height: 40px; }
+  .composer-hint { font-size: 10.5px; margin-top: 6px; }
+
+  .code-block code { font-size: 12.5px; }
+  .code-block pre { padding: 11px 12px; }
+  .md table { font-size: 13px; }
+  .md ul, .md ol { padding-left: 19px; }
+
+  .gate { padding: 18px; }
+  .gate-card { padding: 30px 20px 22px; border-radius: 20px; }
+  .gate-brand h1 { font-size: 19px; }
+  .code-input { gap: clamp(6px, 2.2vw, 10px); }
+  .code-cell { font-size: 21px; border-radius: 11px; max-width: clamp(44px, 15vw, 56px); }
+
+  .toast { bottom: calc(20px + env(safe-area-inset-bottom)); font-size: 13px; }
+}
+
+/* 触屏设备没有 hover，历史对话的删除按钮需要常驻显示 */
+@media (hover: none) {
+  .hist-item .del { opacity: .5; }
+  .hist-item.active .del { opacity: .8; }
+  /* 触屏上给可点元素留出足够大的点击区域 */
+  .icon-btn { width: 40px; height: 40px; }
+  .side-btn, .nav-item { padding-top: 12px; padding-bottom: 12px; }
+}
+
+/* 窄屏手机（如 iPhone SE 320px） */
+@media (max-width: 380px) {
+  .messages { padding: 14px 9px 4px; }
+  .bubble { font-size: 14.5px; padding: 9px 12px; }
+  .empty { padding-top: 5vh; }
+  .empty h2 { font-size: 18px; }
+  .gate-card { padding: 26px 16px 18px; }
+  .gate-brand h1 { font-size: 18px; }
+  .code-cell { font-size: 19px; }
+  .chip { font-size: 12.5px; padding: 7px 11px; }
+}
+
+/* 横屏矮屏：压缩留白，优先保证对话区高度 */
+@media (max-height: 520px) and (orientation: landscape) {
+  .empty { padding-top: 3vh; }
+  .empty .brand-badge { --bd: 44px; margin-bottom: 12px; }
+  .empty h2 { font-size: 18px; }
+  .chips { display: none; }
+  .composer-hint { display: none; }
+  .gate-card { padding: 22px 20px 16px; }
+  .gate-brand { margin-bottom: 18px; }
+  .gate-brand .brand-badge { --bd: 42px; margin-bottom: 10px; }
+}
+
+/* 原来这里有一条 prefers-reduced-motion 规则，只压了 animation-duration 却没管
+   animation-iteration-count，导致 spin / bounce / blink 这些 infinite 动画以 0.01ms
+   的周期无限循环 —— 比不动还费。已移到 motion.css 末尾重写（那边是后加载的，会盖过这里）。*/

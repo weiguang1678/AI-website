@@ -1,0 +1,528 @@
+/* ================================================================
+   动效层
+   ----------------------------------------------------------------
+   全站的动画都集中在这个文件里，前台后台共用（两个页面都在 style.css /
+   admin.css 之后引它）。这样做的三个理由：
+     1. 想整体关掉动画，摘掉一个 <link> 就行，不用在几千行 CSS 里翻；
+     2. 两页的运动语言（时长、缓动、错峰节奏）天然一致；
+     3. 新代码不动原文件，回退干净。
+
+   两条硬规矩：
+     · 只动 transform / opacity。既是为了留在合成层不触发重排，也是功能需要 ——
+       .messages 靠 scrollHeight 判断要不要滚到底，动画要是改了 height/margin，
+       滚动位置就会跟着抖。
+     · 入场动画一律「按需挂类」（.msg-enter / .chips.enter / .row-enter …），
+       不做「默认全都有、靠 .no-anim 关掉」的反向写法。因为 default-on 会连
+       打字点、流式光标这类持续动画一起误伤。
+
+   关于「重复触发」：前台的消息列表、后台的表格都是整块 innerHTML 重绘的，
+   默认挂动画会每帧重放。调用方用 WeakSet / 签名比对判断哪些是真·新元素，
+   只给它们挂 .xxx-enter。细节见 app.js 的 paintedMessages 和 admin.js 的
+   keysSignature。
+   ================================================================ */
+
+:root {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);       /* 进场：减速停住 */
+  --ease-in: cubic-bezier(.55, 0, 1, .45);        /* 退场：加速离开 */
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);    /* 循环：两头都软 */
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1); /* 回弹：活泼感的来源，刻意过冲 */
+  --dur-fast: 130ms;
+  --dur: 240ms;
+  --dur-slow: 380ms;
+  --stagger: 40ms;                                 /* 逐条入场的默认间隔 */
+}
+
+/* ================================================================
+   一、环境层：会动的背景
+   ----------------------------------------------------------------
+   纯 CSS，跑在合成层上，不需要 JS 也不需要 rAF。两团大色块各自
+   26s / 34s 缓慢漂移，速度差造成「一直在动但看不出周期」的观感。
+   模糊只做一次（烘焙进图层），之后动的只有 transform。
+   ================================================================ */
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: -22%;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, var(--bg-glow-1), transparent 70%) 24% 18% / 56% 56% no-repeat,
+    radial-gradient(closest-side, var(--bg-glow-2), transparent 70%) 80% 76% / 52% 52% no-repeat;
+  opacity: .62;
+  filter: blur(14px);
+  will-change: transform;
+  animation: auroraDrift 26s var(--ease-in-out) infinite alternate;
+}
+@keyframes auroraDrift {
+  0%   { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  50%  { transform: translate3d(2%, 1.5%, 0) scale(1.09); }
+  100% { transform: translate3d(-1%, 2.5%, 0) scale(1.03); }
+}
+
+/* 极淡的网格，只在页面上方可见 —— 给纯色底一点质感，不参与动画 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: .55;
+  -webkit-mask-image: radial-gradient(ellipse 95% 62% at 50% -6%, #000, transparent 74%);
+          mask-image: radial-gradient(ellipse 95% 62% at 50% -6%, #000, transparent 74%);
+}
+
+/* 手机：省一层，并把漂移放慢，减少耗电 */
+@media (max-width: 700px) {
+  body::after { display: none; }
+  body::before { opacity: .5; animation-duration: 42s; }
+}
+
+/* ================================================================
+   二、通用入场
+   ================================================================ */
+
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes popIn { from { opacity: 0; transform: translate3d(0, 9px, 0) scale(.94); } }
+@keyframes riseIn { from { opacity: 0; transform: translate3d(0, 12px, 0); } }
+@keyframes blockIn { from { opacity: 0; transform: translate3d(0, 6px, 0); } }
+
+/* scroll-behavior 让「滚到底」是滑过去的；但恢复一段长对话时逐条入场会让
+   它反复追着滚。用 CSS 变量控制不了，交给 JS 的 scrollToBottom()，这里不管。 */
+
+/* ================================================================
+   三、启动闪屏
+   ================================================================ */
+
+.boot {
+  background: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.boot-mark { position: relative; display: grid; place-items: center; width: 104px; height: 104px; }
+.boot-badge {
+  position: relative; z-index: 1;
+  --bd: 62px;                       /* 字号由 style.css 按 --bd 推导，这里只报尺寸 */
+  animation: bootPop .58s var(--ease-spring) both;
+}
+@keyframes bootPop { from { opacity: 0; transform: scale(.55) rotate(-10deg); } }
+
+/* 两圈光环错峰扩散：像心跳，用来填满「等待」这段时间 */
+.boot-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: ringOut 2.3s var(--ease-out) infinite;
+}
+.boot-ring:nth-of-type(2) { animation-delay: 1.15s; }
+@keyframes ringOut {
+  0%   { transform: scale(.5); opacity: 0; }
+  22%  { opacity: .85; }
+  100% { transform: scale(1.22); opacity: 0; }
+}
+
+.boot-bar {
+  width: 124px; height: 3px; border-radius: 3px; overflow: hidden;
+  background: var(--surface-3); margin-top: 22px;
+  animation: fadeIn var(--dur-slow) var(--ease-out) .12s both;
+}
+.boot-bar i {
+  display: block; width: 38%; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), #a855f7);
+  animation: barSlide 1.15s var(--ease-in-out) infinite;
+}
+@keyframes barSlide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+
+/* 后台的登录页也复用一个更小的版本 */
+.admin-body .boot-mark { width: 86px; height: 86px; }
+.admin-body .boot-badge { --bd: 52px; }
+
+/* ================================================================
+   四、秘钥验证
+   ================================================================ */
+
+/* 卡片整体淡入，里面的内容再逐件浮起 —— 两级动作叠出层次 */
+.gate-card { animation: cardIn var(--dur-slow) var(--ease-out) backwards; }
+@keyframes cardIn { from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.985); } }
+
+/* 里面的内容再逐件浮起。用 backwards 而不是 both：入场的终态就是自然态，不需要
+   forwards 填充 —— 填了 forwards 的动画播完仍算「生效中」，会永远挂在元素的
+   getAnimations() 里（减少动态那条规则要一票关掉动画，就是被这类残留逼出来的）。
+   注意 #gate 每次 showView 都会切 display，动画因此自然重播，不需要额外代码 */
+.gate-card .brand-badge,
+.gate-card h1,
+.gate-card .gate-sub,
+.gate-card .code-cell,
+.gate-card .gate-error,
+.gate-card .btn-block,
+.gate-card .gate-foot { animation: riseIn var(--dur-slow) var(--ease-out) backwards; }
+
+.gate-card .brand-badge { animation-delay: 40ms; }
+.gate-card h1           { animation-delay: 95ms; }
+.gate-card .gate-sub    { animation-delay: 140ms; }
+.gate-card .gate-error  { animation-delay: 200ms; }
+.gate-card .btn-block   { animation-delay: 400ms; }
+.gate-card .gate-foot   { animation-delay: 455ms; }
+.gate-card .code-cell:nth-child(1) { --ci: 0; }
+.gate-card .code-cell:nth-child(2) { --ci: 1; }
+.gate-card .code-cell:nth-child(3) { --ci: 2; }
+.gate-card .code-cell:nth-child(4) { --ci: 3; }
+.gate-card .code-cell:nth-child(5) { --ci: 4; }
+
+/* 格子的入场（含逐格错峰延迟）。
+   抽成变量不是为了少打字，是为了下面 .shake / .ok 必须原样把它带上：
+   只要 animation-name 里始终留着 riseIn 这个名字，浏览器就认为这个动画没变、
+   不会重建它；一旦名字被 .shake/.ok 顶掉、之后再顶回来，入场就会被当成新动画
+   从头播一遍（实测：删掉 .shake/.ok 时 5 个格子会集体退回 opacity:0 再升一次）。
+   带 forwards 的 .btn-block 之类不会遇到这个问题，因为没人去改它们的 animation。 */
+.gate-card .code-cell {
+  --enter: riseIn var(--dur-slow) var(--ease-out) calc(200ms + var(--ci, 0) * var(--stagger)) backwards;
+  animation: var(--enter);
+}
+
+/* 输错秘钥：5 个格子像多米诺一样从左到右抖过去，比整块抖清楚得多 */
+/* （用 style.css 里已有的 shake 关键帧，但作用对象从容器换成每个格子） */
+.code-input.shake .code-cell {
+  animation: var(--enter, none), shake .4s var(--ease-out) calc(var(--ci, 0) * var(--stagger));
+}
+
+/* 成功：格子逐个弹一下并转绿，按钮也转绿，然后才切页 */
+.code-input.ok .code-cell {
+  border-color: var(--ok); color: var(--ok);
+  animation: var(--enter, none), cellOk .46s var(--ease-spring);
+}
+@keyframes cellOk {
+  0%   { transform: scale(1); }
+  38%  { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.btn.ok { background: var(--ok) !important; border-color: var(--ok) !important; color: #fff !important; }
+
+/* ================================================================
+   五、主界面外层
+   ================================================================ */
+
+/* 只淡入，不加 transform：.app 一旦有 transform 就会成为 fixed 后代的包含块，
+   移动端的 .sidebar 是 position:fixed，会被带偏。后台的 .admin 同理。 */
+.app-enter, .view-enter { animation: fadeIn var(--dur-slow) var(--ease-out) both; }
+
+/* 品牌徽标上那条「渐变缓慢流动」已经撤掉了：徽标现在装的是 /api/icon 那张 PNG
+   （见 app.js renderBadge），渐变被图整个盖住，动 background-position 没人看得见。
+   要给徽标补一条能盖在图上播的动画（比如一道很淡的扫光），在这里加。 */
+
+/* ================================================================
+   六、侧边栏
+   ================================================================ */
+
+/* 历史条目：新出现的滑入，已有的不动（app.js 用 WeakSet 记账） */
+.hist-item { position: relative; }
+.hist-item.hist-enter {
+  animation: histIn var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 10) * 30ms);
+}
+@keyframes histIn { from { opacity: 0; transform: translate3d(-11px, 0, 0); } }
+
+/* 当前对话左侧的强调条：切换时从 0 长出来 */
+.hist-item::before {
+  content: ''; position: absolute; left: 2px; top: 50%;
+  width: 3px; height: 0; border-radius: 3px; background: var(--accent);
+  transform: translateY(-50%);
+  transition: height var(--dur-slow) var(--ease-spring);
+}
+.hist-item.active::before { height: 17px; }
+
+/* 删除按钮从 0 淡入，而不是啪一下出现 */
+.hist-item .del { transition: opacity var(--dur-fast) linear, color .12s, background .12s; }
+
+.btn-new { transition: background .15s, transform var(--dur-fast) var(--ease-out); }
+.btn-new:active { transform: scale(.97); }
+.btn-new svg { transition: transform var(--dur-slow) var(--ease-spring); }
+.btn-new:hover svg { transform: rotate(90deg); }
+
+/* 抽屉遮罩：常驻元素切 .show，所以关的时候也能淡出。
+   这个 35 必须和 .sidebar 的 40 待在**同一个层叠上下文**里才比得出大小，所以它在
+   index.html 里是 #app 的子元素、不是 #app 的兄弟 —— 理由见那边那段注释，
+   简单说就是 .app-enter 的 opacity 动画会把 #app 变成层叠上下文，抽屉的 z-index 就被锁在里面了。
+   别把 z-index 调到比 40 大：那样遮罩会盖住抽屉本身。 */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 35;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.backdrop.show { opacity: 1; pointer-events: auto; }
+
+/* ================================================================
+   七、空状态与快捷提问
+   ================================================================ */
+
+.empty > *:not(.chips) { animation: popIn var(--dur-slow) var(--ease-spring) both; }
+.empty > *:nth-child(1) { animation-delay: 0ms; }    /* 徽标 */
+.empty > *:nth-child(2) { animation-delay: 75ms; }   /* 标题 */
+.empty > *:nth-child(3) { animation-delay: 155ms; }  /* 打字点 / 欢迎语 */
+.empty > *:nth-child(4) { animation-delay: 215ms; }  /* 快捷提问那一条（外层淡入） */
+
+/* 快捷提问逐条浮起 —— 每个 .chip 的 --i 由 chipsBlock() 写进去 */
+.chips.enter .chip {
+  animation: chipIn var(--dur-slow) var(--ease-spring) both;
+  animation-delay: calc(min(var(--i, 0), 12) * var(--stagger));
+}
+@keyframes chipIn { from { opacity: 0; transform: translate3d(0, 11px, 0) scale(.93); } }
+
+.chip { transition: border-color .15s, color .15s, transform var(--dur) var(--ease-spring), box-shadow var(--dur) var(--ease-out); }
+.chip:hover { box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.chip:active { transform: scale(.95); }
+
+/* ================================================================
+   八、消息
+   ================================================================ */
+
+/* AI 从左边来、用户从右边来，各自带一点回弹 */
+.msg.msg-enter { animation: msgInAi var(--dur-slow) var(--ease-spring) both; }
+.msg.user.msg-enter { animation-name: msgInUser; }
+@keyframes msgInAi   { from { opacity: 0; transform: translate3d(-14px, 7px, 0) scale(.97); } }
+@keyframes msgInUser { from { opacity: 0; transform: translate3d(14px, 7px, 0) scale(.97); } }
+.msg.msg-enter { animation-delay: calc(min(var(--i, 0), 8) * 45ms); }
+
+/* 出错的气泡再抖一下，比只变红更抓眼 */
+.msg.error.msg-enter { animation: msgInAi var(--dur-slow) var(--ease-out) both, shake .4s var(--ease-out) .3s; }
+
+/* 内容块瀑布式铺开：只有「本次新出现且不是流式中」的气泡才挂 .md-stagger，
+   由 app.js 在渲染完成后逐块写 --i。刷新页面恢复长对话时最好看。 */
+.md-stagger > * {
+  animation: blockIn var(--dur) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 6) * 32ms);
+}
+
+/* 生成中的气泡：头像轻轻呼吸 + 顶上一条扫光进度 */
+.bubble { position: relative; }
+.bubble.streaming { overflow: hidden; }
+.bubble.streaming::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: sweep 1.4s linear infinite;
+}
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* 生成中 AI 头像那一圈呼吸。以前这里还叠着 gradientFlow，徽标换成图片之后那条没用了 */
+.msg.streaming .avatar { animation: breathe 1.8s var(--ease-in-out) infinite; }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 34%, transparent); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+
+/* 光标从纯色方块升级成一根渐变胶囊 */
+.cursor { width: 8px; height: 16px; border-radius: 3px; background: linear-gradient(180deg, var(--accent), #a855f7); }
+
+/* 代码块的「复制」：悬停扫一道光，点下去变绿并弹一下 */
+.code-head button { position: relative; overflow: hidden; }
+.code-head button::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 28%, color-mix(in srgb, var(--surface) 85%, transparent) 50%, transparent 72%);
+  transform: translateX(-130%);
+}
+.code-head button:hover::after { animation: sweepAcross .62s var(--ease-out); }
+@keyframes sweepAcross { to { transform: translateX(130%); } }
+.code-head button.copied { color: var(--ok); animation: cellOk .42s var(--ease-spring); }
+
+/* ================================================================
+   九、输入区
+   ================================================================ */
+
+.send-btn { transition: background .15s, opacity .15s, transform var(--dur-fast) var(--ease-out); }
+.send-btn:active:not(:disabled) { transform: scale(.9); }
+
+/* 停止生成：顶掉「发送」的那一下弹进来，并向外扩散一圈警示色 ——
+   原本这圈脉冲是打在发送按钮上的，可它同一帧就被藏了，等于白播 */
+.stop-btn { transition: background .15s, opacity .15s, transform var(--dur-fast) var(--ease-out); }
+.stop-btn.enter { animation: stopIn var(--dur) var(--ease-spring) both, ringPulse .6s var(--ease-out) both; }
+.stop-btn:active:not(:disabled) { transform: scale(.9); }
+@keyframes stopIn { from { opacity: 0; transform: scale(.6) rotate(-25deg); } }
+@keyframes ringPulse {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
+  to   { box-shadow: 0 0 0 15px transparent; }
+}
+
+/* ================================================================
+   十、Toast
+   ================================================================ */
+
+.toast {
+  transform: translate(-50%, 24px) scale(.94);
+  transition: opacity var(--dur) var(--ease-out), transform var(--dur-slow) var(--ease-spring);
+}
+.toast.show { transform: translate(-50%, 0) scale(1); }
+
+/* ================================================================
+   十一、后台：导航与标签页
+   ================================================================ */
+
+/* 当前项的高亮块是一个会滑过去的胶囊，而不是瞬间换底色。
+   DOM 由 admin.js 的 ensureNavThumb() 建，位置也是那边量的。 */
+.admin-nav { position: relative; }
+.nav-thumb {
+  position: absolute; top: 0; left: 0; border-radius: 9px;
+  background: var(--accent-soft); pointer-events: none; z-index: 0;
+  /* 量到位置之前先不显示，否则会在左上角闪一下再滑过去 */
+  opacity: 0;
+  transition: transform var(--dur-slow) var(--ease-spring),
+              width var(--dur-slow) var(--ease-spring),
+              height var(--dur-slow) var(--ease-spring),
+              opacity var(--dur) linear;
+}
+.nav-item { position: relative; z-index: 1; transition: color .15s, background .15s, transform var(--dur-fast) var(--ease-out); }
+.nav-item.active { background: transparent; }
+.nav-item:active { transform: scale(.98); }
+
+/* 切标签页时内容分层次铺开：先标题，再是一张张卡片 */
+.tab:not(.hidden) > *,
+.tab:not(.hidden) form > .card { animation: riseIn var(--dur-slow) var(--ease-out) both; }
+.tab:not(.hidden) > *:nth-child(1) { animation-delay: 0ms; }
+.tab:not(.hidden) > *:nth-child(2) { animation-delay: 45ms; }
+.tab:not(.hidden) > *:nth-child(3) { animation-delay: 90ms; }
+.tab:not(.hidden) > *:nth-child(n+4) { animation-delay: 130ms; }
+.tab:not(.hidden) form > .card:nth-of-type(1) { animation-delay: 60ms; }
+.tab:not(.hidden) form > .card:nth-of-type(2) { animation-delay: 110ms; }
+.tab:not(.hidden) form > .card:nth-of-type(3) { animation-delay: 160ms; }
+.tab:not(.hidden) form > .card:nth-of-type(n+4) { animation-delay: 205ms; }
+
+/* ================================================================
+   十二、后台：概览 / 表格 / 列表
+   ================================================================ */
+
+.stat {
+  animation: statIn var(--dur-slow) var(--ease-spring) both;
+  animation-delay: calc(min(var(--i, 0), 6) * 55ms);
+}
+@keyframes statIn { from { opacity: 0; transform: translate3d(0, 13px, 0) scale(.93); } }
+
+/* 系统信息是固定的 6 对 dt/dd，直接用 nth-of-type 排延迟，不用再往模板里塞 --i */
+.kv dt, .kv dd { animation: blockIn var(--dur) var(--ease-out) both; }
+.kv dt:nth-of-type(1), .kv dd:nth-of-type(1) { animation-delay: 60ms; }
+.kv dt:nth-of-type(2), .kv dd:nth-of-type(2) { animation-delay: 94ms; }
+.kv dt:nth-of-type(3), .kv dd:nth-of-type(3) { animation-delay: 128ms; }
+.kv dt:nth-of-type(4), .kv dd:nth-of-type(4) { animation-delay: 162ms; }
+.kv dt:nth-of-type(5), .kv dd:nth-of-type(5) { animation-delay: 196ms; }
+.kv dt:nth-of-type(6), .kv dd:nth-of-type(6) { animation-delay: 230ms; }
+
+.table tbody tr { transition: background .14s; }
+.table tbody tr.row-enter {
+  animation: rowIn var(--dur) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 24ms);
+}
+@keyframes rowIn { from { opacity: 0; transform: translate3d(0, 7px, 0); } }
+
+/* 刚被启停过的那一行，徽章脉冲一下，让人知道改的是哪条 */
+.table tbody tr.just-changed .badge { animation: badgePulse .75s var(--ease-out); }
+@keyframes badgePulse {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+.badge, .code-chip { transition: color .15s, border-color .15s, background .15s, transform var(--dur) var(--ease-spring); }
+.code-chip:active { transform: scale(.94); }
+.code-chip.copied {
+  color: var(--ok); border-color: var(--ok);
+  animation: cellOk .42s var(--ease-spring);
+}
+.row-check { transition: transform var(--dur) var(--ease-spring); }
+.row-check:checked { transform: scale(1.18); }
+
+.pool-item { transition: background .14s, transform var(--dur) var(--ease-out); }
+.pool-item.pool-enter {
+  animation: poolIn var(--dur) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 14) * 22ms);
+}
+@keyframes poolIn { from { opacity: 0; transform: translate3d(-8px, 0, 0); } }
+.pool-del { transition: opacity var(--dur-fast) linear, color .12s, background .12s; }
+
+.pool-logs > div { animation: fadeIn var(--dur) var(--ease-out) both; }
+
+/* ================================================================
+   十三、后台：分段控件 / 开关 / 表单反馈
+   ================================================================ */
+
+/* 选中态同样做成会滑的滑块。位置一律用 translate + 量出来的宽高，
+   不靠 top/left/bottom 写死 —— 内边距和边框的参照系不一样，写死迟早错位。
+   #deviceSeg 在窄屏是能横向滚动的容器，量出来会失真，那边由 admin.js 跳过 */
+.seg { position: relative; }
+.seg-thumb {
+  position: absolute; top: 0; left: 0; border-radius: 8px;
+  background: var(--surface); box-shadow: var(--shadow-sm);
+  pointer-events: none; z-index: 0;
+  transition: transform var(--dur-slow) var(--ease-spring),
+              width var(--dur-slow) var(--ease-spring),
+              height var(--dur-slow) var(--ease-spring);
+}
+.seg-item { position: relative; z-index: 1; transition: color .15s, transform var(--dur-fast) var(--ease-out); }
+.seg-item.active { background: transparent; box-shadow: none; }
+.seg-item:active { transform: scale(.96); }
+
+.switch i::after { transition: transform var(--dur) var(--ease-spring); }
+.switch input:checked + i { transition: background var(--dur) var(--ease-out); }
+
+/* 保存按钮：转圈 → 打勾 → 复原。
+   转圈做成 ::before 而不是 ::after —— .btn 是 inline-flex，::before 会直接成为
+   一个排在文字前面的弹性项，不用绝对定位去猜文字的位置 */
+.btn.loading::before {
+  content: ''; flex-shrink: 0;
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin .6s linear infinite;
+}
+.btn-done { background: var(--ok) !important; border-color: var(--ok) !important; color: #fff !important; animation: cellOk .45s var(--ease-spring); }
+
+/* 提示文字滑入，而不是啪一下出现 */
+.save-hint.hint-in { animation: hintIn var(--dur) var(--ease-spring) both; }
+@keyframes hintIn { from { opacity: 0; transform: translate3d(-7px, 0, 0); } }
+
+/* 图标编辑器：两块面板交叉淡入；画布在重画时弹一下 */
+.icon-editor { animation: popIn var(--dur-slow) var(--ease-spring) both; }
+.canvas-pop { animation: cellOk .5s var(--ease-spring); }
+
+/* ================================================================
+   十四、后台：弹窗
+   ================================================================ */
+
+.modal { animation: fadeIn var(--dur) var(--ease-out); }
+.modal-card { animation: modalIn var(--dur-slow) var(--ease-spring) both; }
+@keyframes modalIn { from { opacity: 0; transform: translate3d(0, 20px, 0) scale(.93); } }
+
+/* 退场：admin.js 先挂 .closing 播这一段，动画走完才真的加 .hidden */
+.modal.closing { animation: fadeOut 190ms var(--ease-in) both; }
+.modal.closing .modal-card { animation: modalOut 190ms var(--ease-in) both; }
+@keyframes fadeOut { to { opacity: 0; } }
+@keyframes modalOut { to { opacity: 0; transform: translate3d(0, 10px, 0) scale(.97); } }
+.result-codes code {
+  animation: chipIn var(--dur) var(--ease-spring) both;
+  animation-delay: calc(min(var(--i, 0), 16) * 24ms);
+}
+
+/* 预览：换设备时设备框弹一下 */
+.device-frame.bump { animation: cellOk .5s var(--ease-spring); }
+
+/* ================================================================
+   十五、减少动态偏好
+   ----------------------------------------------------------------
+   style.css 原来那条规则只压 animation-duration、没管 iteration-count，
+   于是 spin / bounce / blink 这类 infinite 动画会以 .01ms 的周期无限循环 ——
+   等于让浏览器每帧重算，比不动还费。这条已经整个挪到这里重写。
+   另外它是「枚举选择器」的写法，漏一处就漏一片（这版最初漏了 #sysInfo 的
+   dt/dd，被 getAnimations() 查出 12 个），所以这里不再枚举。
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* 为什么不是「压到 .01ms」：带 both / forwards 填充的动画哪怕只跑 .01ms，
+     结束后仍然会被 getAnimations() 一直报出来，属于「看着停了其实还挂着」。
+     直接 animation: none 才是真的干净。
+     也不担心内容看不见 —— 本文件的关键帧都只写 from（或 from/to 回到自然值），
+     撤掉动画后元素就是它本来的样子，也正是动画的终态。 */
+}

@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<!-- 下面这行由服务端现场替换成 <title> / 站点图标 / 分享卡片 meta，见 server.js 的 pageHead() -->
+<!-- %HEAD% -->
+<link rel="stylesheet" href="/assets/style.css" />
+<link rel="stylesheet" href="/assets/admin.css" />
+<link rel="stylesheet" href="/assets/motion.css" />
+</head>
+<body class="admin-body">
+
+<div id="boot" class="boot">
+  <div class="boot-mark">
+    <span class="boot-ring"></span>
+    <span class="boot-ring"></span>
+    <div class="brand-badge boot-badge">AI</div>
+  </div>
+  <div class="boot-bar"><i></i></div>
+</div>
+
+<!-- ==================== 后台登录 ==================== -->
+<div id="login" class="gate hidden">
+  <div class="gate-card login-card">
+    <div class="gate-brand">
+      <div class="brand-badge has-icon"><img id="adminBadge" src="/api/icon" alt="" /></div>
+      <h1>管理后台</h1>
+      <p class="gate-sub">请输入管理员密码</p>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <label class="field">
+        <span>管理员密码</span>
+        <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" />
+      </label>
+      <p class="gate-error" id="loginError" role="alert"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">登录</button>
+    </form>
+    <p class="gate-foot"><a href="/">← 返回前台</a></p>
+  </div>
+</div>
+
+<!-- ==================== 后台面板 ==================== -->
+<div id="panel" class="admin hidden">
+  <aside class="admin-side">
+    <div class="side-head">
+      <div class="brand-badge small has-icon"><img id="adminBadgeSmall" src="/api/icon" alt="" /></div>
+      <span class="side-name">管理后台</span>
+    </div>
+    <nav class="admin-nav" id="adminNav">
+      <button class="nav-item active" data-tab="overview">概览</button>
+      <button class="nav-item" data-tab="ai">AI 设置</button>
+      <button class="nav-item" data-tab="keys">秘钥管理</button>
+      <button class="nav-item" data-tab="security">入口与安全</button>
+      <button class="nav-item" data-tab="preview">预览效果</button>
+    </nav>
+    <div class="side-foot">
+      <a class="side-btn" href="/" target="_blank">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>
+        打开前台
+      </a>
+      <button class="side-btn" id="logoutBtn">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        退出登录
+      </button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+
+    <!-- ---------- 概览 ---------- -->
+    <section class="tab" data-tab="overview">
+      <h1 class="page-title">概览</h1>
+      <div class="stat-grid" id="statGrid"></div>
+      <div class="card" style="margin-top:18px">
+        <div class="card-head"><h2>系统信息</h2></div>
+        <dl class="kv" id="sysInfo"></dl>
+      </div>
+    </section>
+
+    <!-- ---------- AI 设置 ---------- -->
+    <section class="tab hidden" data-tab="ai">
+      <h1 class="page-title">AI 设置</h1>
+
+      <form id="aiForm">
+        <div class="card">
+          <div class="card-head"><h2>基本</h2><p>这些内容会显示在前台页面上</p></div>
+          <div class="grid-2">
+            <label class="field">
+              <span>AI 名称</span>
+              <input type="text" name="aiName" maxlength="30" placeholder="例如：小助手" />
+              <em>前台的标题、头像和对话框名称</em>
+            </label>
+            <label class="field">
+              <span>开场白方式</span>
+              <select name="greetingMode">
+                <option value="library">AI 学习库（从库里轮流取）</option>
+                <option value="ai">AI 实时生成（每次调模型）</option>
+                <option value="fixed">固定欢迎语</option>
+              </select>
+              <em>学习库：进入即秒开、不耗额度；实时生成：每次现场调模型，稍慢但更随机</em>
+            </label>
+          </div>
+          <label class="field">
+            <span>欢迎语</span>
+            <input type="text" name="welcome" maxlength="120" placeholder="例如：有什么可以帮你的吗？" />
+            <em>选「固定欢迎语」时显示这句；AI 模式下用作接口不可用时的兜底</em>
+          </label>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>网站图标</h2>
+            <p>浏览器标签页、前台头像、后台头像、微信/QQ 分享卡片用的都是同一张图</p>
+          </div>
+
+          <div class="seg" id="iconModeSeg">
+            <button type="button" class="seg-item active" data-icon-mode="default">默认图标</button>
+            <button type="button" class="seg-item" data-icon-mode="custom">自定义图标</button>
+          </div>
+
+          <!-- 默认图标：渐变圆角块 + 文字 -->
+          <div id="iconDefaultPane">
+            <div class="icon-editor">
+              <canvas id="iconDefaultCanvas" width="384" height="384" class="icon-canvas"></canvas>
+              <div class="icon-editor-side">
+                <label class="field">
+                  <span>图标上的文字</span>
+                  <input type="text" name="iconText" maxlength="4" placeholder="留空则取 AI 名称首字" />
+                  <em>最多 4 个字，右边即时预览</em>
+                </label>
+                <p class="pool-hint">底色是固定的渐变，只有文字可改。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 自定义图标：上传 + 拖动缩放裁剪 -->
+          <div id="iconCustomPane" class="hidden">
+            <div class="icon-editor">
+              <canvas id="iconCropCanvas" width="384" height="384" class="icon-canvas crop"></canvas>
+              <div class="icon-editor-side">
+                <label class="field">
+                  <span>选择图片</span>
+                  <input type="file" id="iconFile" accept="image/png,image/jpeg,image/webp,image/gif" />
+                  <em>PNG / JPG / WebP，建议用正方形</em>
+                </label>
+                <label class="field">
+                  <span>缩放</span>
+                  <input type="range" id="iconZoom" min="100" max="400" value="100" />
+                </label>
+                <button type="button" class="btn btn-ghost btn-sm" id="iconResetCrop">重新居中</button>
+                <p class="pool-hint">在左边的圆角方框里按住拖动，摆好位置后保存。</p>
+              </div>
+            </div>
+            <p class="save-hint" id="iconFileHint">还没选图片 —— 选一张再调整位置。</p>
+          </div>
+
+          <div class="form-actions" style="margin-top:18px">
+            <button type="button" class="btn btn-ghost btn-sm" id="iconRestoreBtn">恢复默认图标</button>
+            <span class="save-hint" id="iconHint"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>接口</h2><p>OpenAI 兼容格式，DeepSeek / 月之暗面 / 硅基流动 / One-API 等均可</p></div>
+          <label class="field">
+            <span>接口地址（Base URL）</span>
+            <input type="text" name="baseUrl" placeholder="https://api.deepseek.com/v1" spellcheck="false" />
+            <em>填到 /v1 为止即可；也可以直接填完整的 /chat/completions 地址</em>
+          </label>
+          <div class="grid-2">
+            <label class="field">
+              <span>API Key</span>
+              <div class="input-group">
+                <input type="password" name="apiKey" placeholder="sk-…" spellcheck="false" autocomplete="off" />
+                <button type="button" class="btn btn-ghost btn-sm" id="toggleKey">显示</button>
+                <button type="button" class="btn btn-ghost btn-sm hidden" id="clearKeyBtn">清除</button>
+              </div>
+              <em id="apiKeyHint">只保存在服务器本地，不会下发到浏览器</em>
+            </label>
+            <label class="field">
+              <span>模型名称</span>
+              <input type="text" name="model" placeholder="deepseek-chat" spellcheck="false" />
+              <em>例如 deepseek-chat、gpt-4o-mini、moonshot-v1-8k</em>
+            </label>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn btn-ghost" id="testBtn">测试连接</button>
+            <span class="test-result" id="testResult"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>对话参数</h2></div>
+          <label class="field">
+            <span>系统提示词</span>
+            <textarea name="systemPrompt" rows="4" placeholder="你是一个乐于助人的中文 AI 助手…"></textarea>
+            <em>用来定义 AI 的身份、语气和回答风格</em>
+          </label>
+          <div class="grid-3">
+            <label class="field">
+              <span>随机性 temperature</span>
+              <input type="number" name="temperature" min="0" max="2" step="0.1" />
+              <em>0 更稳定，2 更发散</em>
+            </label>
+            <label class="field">
+              <span>最大回复长度</span>
+              <input type="number" name="maxTokens" min="1" max="100000" step="1" />
+              <em>单次回答的 token 上限</em>
+            </label>
+            <label class="field">
+              <span>携带历史条数</span>
+              <input type="number" name="historyLimit" min="2" max="200" step="1" />
+              <em>越大越贵，一般 20 够用</em>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-head-text">
+              <h2>欢迎语库（AI 学习）</h2>
+              <p>可以建多个库（例如「通用场景」「雨花台烈士陵园」），前台从<strong>当前使用</strong>的那个库里轮流取欢迎语</p>
+            </div>
+            <div class="card-head-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="learnNowBtn">立即学习</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="addGreetBtn">手动添加</button>
+              <button type="button" class="btn btn-danger btn-sm" id="clearGreetBtn">清空本库</button>
+            </div>
+          </div>
+
+          <div class="lib-bar">
+            <label class="field lib-pick">
+              <span>当前使用的库</span>
+              <select id="libSelect"></select>
+            </label>
+            <div class="lib-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="libNewBtn">新建库</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="libEditBtn">改名 / 改主题</button>
+              <button type="button" class="btn btn-danger btn-sm" id="libDelBtn">删除本库</button>
+            </div>
+          </div>
+          <p class="lib-note" id="libNote"></p>
+          <p class="lib-serve" id="libServe"></p>
+
+          <div class="pool-add hidden" id="libForm">
+            <input type="text" id="libNameInput" maxlength="24" placeholder="库名称，例如「雨花台烈士陵园」" />
+            <input type="text" id="libNoteInput" maxlength="60" placeholder="主题说明（写给 AI 看），例如「参观者咨询雨花台烈士陵园的相关问题」" />
+            <button type="button" class="btn btn-primary btn-sm" id="libFormSave">保存</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="libFormCancel">取消</button>
+          </div>
+
+          <div class="switch-row">
+            <div>
+              <strong>每天自动学习</strong>
+              <p>到点自动让 AI 给<strong>每个库</strong>各生成一批新的欢迎语、淘汰用腻的，让库一直保持新鲜</p>
+            </div>
+            <label class="switch"><input type="checkbox" name="greetingAutoLearn" /><i></i></label>
+          </div>
+
+          <div class="grid-3" style="margin-top:16px">
+            <label class="field">
+              <span>每天运行时刻</span>
+              <select name="greetingAutoLearnHour" id="learnHour"></select>
+              <em>服务器本地时间</em>
+            </label>
+            <label class="field">
+              <span>每次新增条数</span>
+              <input type="number" name="greetingLearnBatch" min="1" max="20" step="1" />
+              <em>每个库一次最多学几句</em>
+            </label>
+            <label class="field">
+              <span>库容量上限</span>
+              <input type="number" name="greetingPoolLimit" min="5" max="500" step="1" />
+              <em>每个库超出后淘汰用得最多的</em>
+            </label>
+          </div>
+
+          <div class="sub-head">
+            <h3>本库的欢迎语</h3>
+            <span class="sub-meta" id="poolStatus"></span>
+          </div>
+
+          <div class="pool-add hidden" id="poolAdd">
+            <input type="text" id="poolAddInput" maxlength="60" placeholder="输入一句欢迎语，回车即可添加" />
+            <button type="button" class="btn btn-primary btn-sm" id="poolAddSave">添加</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="poolAddCancel">取消</button>
+          </div>
+
+          <div class="pool-list" id="poolList"></div>
+
+          <div class="sub-head" style="margin-top:24px">
+            <h3>兜底快捷提问</h3>
+            <button type="button" class="btn btn-ghost btn-sm" id="chipAddBtn">添加一条</button>
+          </div>
+          <p class="pool-hint">
+            前台进入时先显示这一组，随后由 AI 按<strong>当句欢迎语</strong>实时生成更贴合的替换掉；
+            接口没配好或生成失败时，就一直用这里的。
+          </p>
+
+          <div class="pool-add hidden" id="chipAdd">
+            <input type="text" id="chipAddInput" maxlength="40" placeholder="输入一个快捷提问，回车即可添加" />
+            <button type="button" class="btn btn-primary btn-sm" id="chipAddSave">添加</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="chipAddCancel">取消</button>
+          </div>
+
+          <div class="pool-list" id="chipList"></div>
+
+          <details class="pool-logs">
+            <summary>运行日志</summary>
+            <div id="poolLogs"></div>
+          </details>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="saveAiBtn">保存设置</button>
+          <span class="save-hint" id="aiSaveHint"></span>
+        </div>
+      </form>
+    </section>
+
+    <!-- ---------- 秘钥管理 ---------- -->
+    <section class="tab hidden" data-tab="keys">
+      <h1 class="page-title">秘钥管理</h1>
+
+      <div class="card">
+        <div class="card-head"><h2>生成秘钥</h2><p>秘钥固定 5 位</p></div>
+        <div class="seg" id="modeSeg">
+          <button type="button" class="seg-item active" data-mode="generate">批量生成</button>
+          <button type="button" class="seg-item" data-mode="custom">自定义</button>
+        </div>
+
+        <div id="generatePane">
+          <div class="grid-3">
+            <label class="field">
+              <span>生成数量</span>
+              <input type="number" id="genCount" value="1" min="1" max="200" />
+            </label>
+            <label class="field">
+              <span>字符类型</span>
+              <select id="genCharset">
+                <option value="alnum">字母 + 数字（推荐）</option>
+                <option value="digit">纯数字</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>备注</span>
+              <input type="text" id="genNote" maxlength="60" placeholder="例如：给张三" />
+            </label>
+          </div>
+        </div>
+
+        <div id="customPane" class="hidden">
+          <label class="field">
+            <span>自定义秘钥（5 位）</span>
+            <input type="text" id="customCode" maxlength="5" placeholder="例如 A7K2M" spellcheck="false" style="text-transform:uppercase;font-family:var(--mono);letter-spacing:3px" />
+            <em>只能使用大写字母和数字；为避免混淆，不使用 I、O、0、1</em>
+          </label>
+          <label class="field">
+            <span>备注</span>
+            <input type="text" id="customNote" maxlength="60" placeholder="例如：给张三" />
+          </label>
+        </div>
+
+        <div class="card-sub">
+          <h3>有效期</h3>
+          <div class="grid-3">
+            <label class="field">
+              <span>有效期类型</span>
+              <select id="expiryType">
+                <option value="forever">长期有效</option>
+                <option value="duration">按天数 / 小时</option>
+                <option value="datetime">指定到期时间</option>
+                <option value="onetime">一次性（登录过一次就作废）</option>
+              </select>
+            </label>
+            <label class="field hidden" id="durationFields">
+              <span>时长</span>
+              <div class="input-group">
+                <input type="number" id="durationValue" value="30" min="1" />
+                <select id="durationUnit">
+                  <option value="day">天</option>
+                  <option value="hour">小时</option>
+                  <option value="minute">分钟</option>
+                </select>
+              </div>
+            </label>
+            <label class="field hidden" id="datetimeFields">
+              <span>到期时间</span>
+              <input type="datetime-local" id="expiresAt" />
+            </label>
+            <label class="field" id="maxUsesField">
+              <span>可登录次数</span>
+              <input type="number" id="maxUses" min="1" placeholder="留空 = 不限" />
+              <em>该秘钥最多被用来登录几次；留空表示不限</em>
+            </label>
+            <label class="field hidden" id="onetimeFields">
+              <span>一次性说明</span>
+              <em>这个秘钥只能登录一次，用完即作废；已经登录的人会话不受影响，可正常对话。</em>
+            </label>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" id="createBtn">生成秘钥</button>
+          <span class="save-hint" id="createHint"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>秘钥列表</h2>
+          <div class="card-head-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="copyAllBtn">复制全部有效秘钥</button>
+            <button type="button" class="btn btn-danger btn-sm" id="bulkDeleteBtn" disabled>删除选中</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="table" id="keysTable">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" id="checkAll" /></th>
+                <th>秘钥</th>
+                <th>状态</th>
+                <th>有效期</th>
+                <th>登录次数</th>
+                <th>备注</th>
+                <th>最后使用</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="keysBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-row hidden" id="keysEmpty">还没有秘钥，先在上面生成一个吧。</div>
+      </div>
+    </section>
+
+    <!-- ---------- 入口与安全 ---------- -->
+    <section class="tab hidden" data-tab="security">
+      <h1 class="page-title">入口与安全</h1>
+
+      <form id="securityForm">
+        <div class="card">
+          <div class="card-head"><h2>进入网站的秘钥验证</h2><p>控制访客打开网站时的验证方式</p></div>
+
+          <div class="switch-row">
+            <div>
+              <strong>需要秘钥才能进入</strong>
+              <p>关闭后访客无需输入秘钥即可直接对话</p>
+            </div>
+            <label class="switch"><input type="checkbox" name="requireKey" /><i></i></label>
+          </div>
+
+          <div class="switch-row sub hidden" id="frontLocalRow">
+            <div>
+              <strong>仅本机可访问</strong>
+              <p>只允许 127.0.0.1 访问，局域网或公网无法打开</p>
+            </div>
+            <label class="switch"><input type="checkbox" name="frontLocalOnly" /><i></i></label>
+          </div>
+
+          <p class="warn-note" id="frontWarn">
+            提示：秘钥验证是本站唯一的准入手段，关闭后任何人都能直接使用你的 AI 额度。
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>进入管理后台的方式</h2><p>控制你自己打开本页时的验证方式</p></div>
+
+          <div class="switch-row">
+            <div>
+              <strong>后台需要密码</strong>
+              <p>关闭后不再校验管理员密码</p>
+            </div>
+            <label class="switch"><input type="checkbox" name="adminRequirePassword" /><i></i></label>
+          </div>
+
+          <div class="switch-row sub hidden" id="adminLocalRow">
+            <div>
+              <strong>仅本机可访问</strong>
+              <p>后台只允许从本机打开，建议保持开启</p>
+            </div>
+            <label class="switch"><input type="checkbox" name="adminLocalOnly" /><i></i></label>
+          </div>
+
+          <p class="warn-note" id="adminWarn">
+            提示：关闭后台密码后，任何能访问到本页的人都可修改全部配置。
+          </p>
+
+          <label class="field">
+            <span>后台网址</span>
+            <input type="text" name="adminPath" placeholder="admin" spellcheck="false" autocomplete="off" />
+            <em>
+              后台就开在这个地址上，默认的 admin 也就是现在的 /admin。改掉之后公网只能从新地址进入，
+              老地址 /admin、/admin.html 和 /api/admin 对外一律 404；只有本机仍然放行 ——
+              所以万一改完忘了新地址，还能在这台电脑上打开老地址改回来，
+              也可以直接编辑 data/db.json 里的 adminPath。只能填字母、数字、- 和 _。
+            </em>
+            <em>当前地址：<a id="adminPathNow" href="/admin" target="_blank" rel="noreferrer">/admin</a></em>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存</button>
+          <span class="save-hint" id="securitySaveHint"></span>
+        </div>
+      </form>
+
+      <div class="card">
+        <div class="card-head"><h2>修改管理员密码</h2><p>修改后所有已登录的后台会话都会被强制退出</p></div>
+        <form id="passwordForm">
+          <div class="grid-3">
+            <label class="field" id="currentPwField">
+              <span>当前密码</span>
+              <input type="password" id="currentPw" autocomplete="current-password" />
+            </label>
+            <label class="field">
+              <span>新密码</span>
+              <input type="password" id="newPw" autocomplete="new-password" />
+              <em>至少 6 位</em>
+            </label>
+            <label class="field">
+              <span>确认新密码</span>
+              <input type="password" id="confirmPw" autocomplete="new-password" />
+            </label>
+          </div>
+          <div class="row-actions">
+            <button type="submit" class="btn btn-primary">修改密码</button>
+            <span class="save-hint" id="pwHint"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ---------- 预览效果 ---------- -->
+    <section class="tab hidden" data-tab="preview">
+      <h1 class="page-title">预览效果</h1>
+
+      <div class="preview-bar">
+        <div class="seg" id="deviceSeg">
+          <button type="button" class="seg-item active" data-device="375">手机 375</button>
+          <button type="button" class="seg-item" data-device="414">大屏手机 414</button>
+          <button type="button" class="seg-item" data-device="768">平板 768</button>
+          <button type="button" class="seg-item" data-device="1024">小电脑 1024</button>
+          <button type="button" class="seg-item" data-device="full">桌面 自适应</button>
+        </div>
+        <div class="preview-actions">
+          <span class="preview-size" id="previewSize">375 × 812</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="previewRotate">横竖屏</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="previewReload">刷新</button>
+          <a class="btn btn-ghost btn-sm" href="/" target="_blank" rel="noopener">新窗口打开</a>
+        </div>
+      </div>
+
+      <p class="preview-note">
+        预览用的是你当前的管理员身份，无需输入秘钥；访客打开看到的是秘钥验证页。
+      </p>
+
+      <div class="preview-stage" id="previewStage">
+        <div class="device-scaler" id="deviceScaler">
+          <div class="device-frame phone" id="deviceFrame">
+            <iframe id="previewFrame" src="about:blank" title="前台预览"></iframe>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- 生成结果弹窗 -->
+<div class="modal hidden" id="resultModal">
+  <div class="modal-card">
+    <h3 id="resultTitle">生成成功</h3>
+    <p class="modal-sub" id="resultSub"></p>
+    <div class="result-codes" id="resultCodes"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="closeModal">关闭</button>
+      <button class="btn btn-primary" id="copyResult">复制全部</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script type="module" src="/assets/admin.js"></script>
+</body>
+</html>
