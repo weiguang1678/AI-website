@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { writeZip, zipEntryNames } from './zip.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -56,12 +57,26 @@ const log = (msg) => console.log(`[build] ${msg}`);
 const die = (msg) => { console.error(`[build] ✗ ${msg}`); process.exit(1); };
 
 /**
+ * Windows 那个启动脚本的文件名。它横跨三处，缺一处都对不上：
+ *   · 本文件 writeLaunchers() 负责把文件造出来；
+ *   · setup.cs 里的 LaunchScript 常量负责装完去启动它；
+ *   · zip.mjs 负责把它原样存进包里。
+ * 名字对不上的话，表现是「装到 [4/4] 报安装失败、快捷方式全是死的」——
+ * verifyLauncherInZip() 每次打包都会把这三处对一遍。
+ */
+const WIN_LAUNCHER = '启动网站.cmd';
+
+/**
  * 用哪个 tar。
  *
  * Windows 上**不能**直接叫 `tar`：Git for Windows 装的那个是 GNU tar，它会把
  * 「D:\...」里的 `D:` 当成远程主机名，报 “Cannot connect to D: resolve failed”。
  * 系统自带的 C:\Windows\System32\tar.exe 是 bsdtar，认本地路径、还能直接解 zip，
  * 所以 Windows 上写死用它的绝对路径。
+ *
+ * 只用来**解** Node 运行时、以及打 macOS/Linux 的 tar.gz。Windows 那个 zip
+ * 已经不用它了 —— 它会把中文文件名按宿主代码页转换，在英文机器上直接变成
+ * 「????.cmd」，详见 zip.mjs 顶部那段。
  */
 const TAR = process.platform === 'win32'
   ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')
@@ -208,7 +223,7 @@ function writeLaunchers(appDir, t) {
     // 注意：这个 .cmd 里**一个非 ASCII 字符都不能有**。cmd.exe 按系统 OEM 代码页
     // 解析批处理，混进 UTF-8 中文会把后面的换行一起吞掉，双击就是一闪而退。
     // 中文提示一律写在 start.mjs 里（Node 永远按 UTF-8 读）。
-    writeAscii(path.join(appDir, '启动网站.cmd'), [
+    writeAscii(path.join(appDir, WIN_LAUNCHER), [
       '@echo off',
       'setlocal',
       'cd /d "%~dp0"',
@@ -243,6 +258,35 @@ function writeLaunchers(appDir, t) {
 
 // ---------------------------------------------------------------- 产物
 
+/**
+ * 打完 zip 立刻回头验一遍：启动脚本得原样躺在里面，而且名字是带 UTF-8 标志的。
+ *
+ * 这条自检是补一次真掉进去的坑：原先这个 zip 是 bsdtar 打的，它按**宿主代码页**
+ * 转换文件名 —— 中文 Windows 上存成 GBK（本机解压一切正常，端到端测试全绿），
+ * 英文 runner 上编不出来就变成 `????.cmd`，于是装完启动时报「安装失败」。
+ * 这种事只有从产物本身验才看得见，详见 zip.mjs 顶部那段。
+ */
+function verifyLauncherInZip(zip, topName) {
+  const want = `${topName}/${WIN_LAUNCHER}`;
+
+  // 先对上 setup.cs：它是**另一个文件**里的字符串，跟这里没有任何编译期关联，
+  // 改名的时候最容易漏掉一处，而漏掉的表现是装完启动不起来
+  const cs = fs.readFileSync(path.join(HERE, 'setup.cs'), 'utf8');
+  if (!cs.includes(`LaunchScript = "${WIN_LAUNCHER}"`)) {
+    die(`setup.cs 里的 LaunchScript 不是「${WIN_LAUNCHER}」，跟这里对不上 —— 装完会启动不了`);
+  }
+
+  const entries = zipEntryNames(zip);
+  const hit = entries.find((e) => e.name === want);
+  if (!hit) {
+    const odd = entries.filter((e) => /[^\x20-\x7e]/.test(e.name) || e.name.includes('?'));
+    die(`zip 里没有「${want}」——setup.cs 装完就是拿这个名字去启动的，这样装出来是坏的`
+      + (odd.length ? `\n      包里这些名字看着可疑：${odd.slice(0, 5).map((e) => JSON.stringify(e.name)).join('、')}` : ''));
+  }
+  if (!hit.utf8) die(`「${want}」在 zip 里没置 UTF-8 标志，换台代码页不同的机器就会解成乱码`);
+  log('  自检：启动脚本名字正常');
+}
+
 function makeArtifacts(appDir, target, t, outDir) {
   const made = [];
   const parent = path.dirname(appDir);
@@ -251,8 +295,9 @@ function makeArtifacts(appDir, target, t, outDir) {
   if (t.kind === 'windows') {
     const zip = path.join(outDir, `${base}-win-x64.zip`);
     fs.rmSync(zip, { force: true });
-    log('打 zip（bsdtar，Windows 自带）');
-    run(TAR, ['-a', '-c', '-f', zip, '-C', parent, t.dirName]);
+    log('打 zip（自带的写入器，文件名一律按 UTF-8 存）');
+    log(`  共 ${writeZip(parent, t.dirName, zip)} 个条目`);
+    verifyLauncherInZip(zip, t.dirName);
     made.push(zip);
 
     if (process.platform === 'win32') made.push(makeSetupExe(zip, outDir));
