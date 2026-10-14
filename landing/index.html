@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 问答网站 —— 带秘钥验证的自托管 AI 对话站</title>
+<meta name="description" content="一个跑在自己机器上的 AI 问答网站：5 位秘钥准入、AI 主动打招呼、流式对话、后台全可配。四平台安装包自带 Node 运行时，唯一的运行依赖是 express。">
+<meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1014" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+
+<!-- 与站点同款的图标。内联进来的，不额外发请求 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='.55' stop-color='%23a855f7'/%3E%3Cstop offset='1' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M32 15l4.6 11.1L48 30.6l-11.4 4.5L32 46.2l-4.6-11.1L16 30.6l11.4-4.5z' fill='%23fff'/%3E%3C/svg%3E">
+
+<style>
+/* ==========================================================================
+   落地页样式。
+ *
+ * 两个约定：
+ *   1. 颜色一律走下面的 token，值直接抄自网站本体的 public/assets/style.css
+ *      （--accent 靛蓝、--radius 12px、系统字体栈……），只是把深色模式的
+ *      判断从 @media (prefers-color-scheme: dark) 用同一套写法搬过来。
+ *      改这里就等于改产品观感，别随手写死颜色。
+ *   2. 只动 transform / opacity 做动画。整页没有任何外部请求：
+ *      没有字体 CDN、没有图标库、没有统计脚本 —— 就是这一个文件。
+ * ========================================================================== */
+
+:root {
+  /* 来自产品本体，别改 */
+  --bg: #f6f7f9;
+  --bg-glow-1: #c7d2fe;
+  --bg-glow-2: #ddd6fe;
+  --surface: #ffffff;
+  --surface-2: #f2f3f6;
+  --surface-3: #e9ebf0;
+  --border: #e3e5ea;
+  --border-strong: #d2d6de;
+  --text: #14161a;
+  --text-2: #4a4f5a;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --radius: 12px;
+  --radius-lg: 18px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+          "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* 落地页自己加的。--muted 比产品里那支更暗一点：产品里的 #8b909b 在浅底上
+     只有 3:1，正文用它过不了 4.5:1，这里只拿它做小字，正文一律用 --text-2 */
+  --muted: #5f6470;
+  --brand-grad: linear-gradient(135deg, #6366f1 0%, #a855f7 55%, #ec4899 100%);
+  --shadow-sm: 0 1px 2px rgba(16, 18, 26, .05), 0 1px 3px rgba(16, 18, 26, .06);
+  --shadow-md: 0 6px 16px rgba(16, 18, 26, .07), 0 12px 32px rgba(16, 18, 26, .06);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --dur: 200ms;
+  --wrap: 1120px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1014;
+    --bg-glow-1: #1e1b4b;
+    --bg-glow-2: #312e81;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --surface-3: #262b36;
+    --border: #272c36;
+    --border-strong: #333a47;
+    --text: #e9ebef;
+    --text-2: #b3b9c5;
+    --muted: #9aa1ad;
+    --accent: #6366f1;
+    --accent-hover: #5850e8;   /* 比 #6366f1 再暗一档：白字要够 4.5:1 */
+    --accent-soft: #1c1f3a;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, .45);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--bg);
+  overflow-x: hidden;          /* 兜底：任何一处溢出都不该出现横向滚动条 */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 背景做两层，都很克制：上面两团缓慢漂移的靛蓝光晕（就是网站本体那两支
+   --bg-glow-*），下面一层极淡的网格。纯装饰，不参与交互 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20vmax;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(38vmax 38vmax at 18% 12%, var(--bg-glow-1) 0%, transparent 62%),
+    radial-gradient(42vmax 42vmax at 82% 30%, var(--bg-glow-2) 0%, transparent 64%);
+  filter: blur(28px);
+  opacity: .75;
+  animation: drift 34s ease-in-out infinite alternate;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(70% 55% at 50% 0%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(70% 55% at 50% 0%, #000 0%, transparent 78%);
+}
+@keyframes drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+
+/* 只在 transform / opacity 上做动画，而且全部尊重「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; opacity: .55; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;   /* 少这一条，infinite 动画会以 .01ms 无限空转 */
+    transition-duration: .01ms !important;
+  }
+}
+
+a { color: var(--accent); }
+:where(a, button, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.skip {
+  position: absolute; left: 12px; top: -48px;
+  z-index: 100;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  transition: top var(--dur) var(--ease-out);
+}
+.skip:focus { top: 12px; }
+
+.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+
+/* 只给读屏看、不给眼睛看的内容（表格的 caption 就是） */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ 顶栏 */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid transparent;
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  transition: border-color var(--dur) var(--ease-out);
+}
+.nav.stuck { border-bottom-color: var(--border); }
+.nav-in { display: flex; align-items: center; gap: 20px; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-weight: 700; letter-spacing: -.01em; color: var(--text); text-decoration: none; }
+.brand svg { display: block; border-radius: 8px; }
+.nav-links { display: flex; gap: 4px; margin-left: auto; }
+.nav-links a {
+  padding: 11px 12px;
+  border-radius: 8px;
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 15px;
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.nav-links a:hover { color: var(--text); background: var(--surface-2); }
+@media (max-width: 760px) { .nav-links { display: none; } }
+
+/* ------------------------------------------------------------------ 按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;            /* 触摸目标 ≥44px */
+  padding: 11px 20px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform var(--dur) var(--ease-out), background var(--dur) var(--ease-out),
+              border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.btn svg { flex: none; }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+.btn-ghost:hover { background: var(--surface-2); transform: translateY(-1px); }
+.btn-ghost:active { transform: translateY(0); }
+.btn-sm { min-height: 44px; padding: 9px 16px; font-size: 15px; }
+
+/* ------------------------------------------------------------------ 首屏 */
+.hero { padding: 64px 0 56px; }
+.hero-grid { display: grid; grid-template-columns: 1fr; gap: 48px; align-items: center; }
+@media (min-width: 1000px) { .hero-grid { grid-template-columns: 1.05fr .95fr; gap: 56px; } }
+
+/* 网格项的 min-width 默认是 auto，也就是「不许比内容更窄」。
+   代码块里那行 git clone 长几十个字符，于是窄屏上一整块面板被它顶到 522px ——
+   页面就多出横向滚动条。滚动容器（<pre>）不参与固有尺寸计算，
+   所以必须显式把下限放开，让 <pre> 自己去横向滚。 */
+.hero-grid > *, .cards > *, .steps > * { min-width: 0; }
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.eyebrow b { color: var(--text); font-weight: 600; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+
+.hero h1 {
+  margin: 20px 0 0;
+  font-size: clamp(30px, 5.2vw, 50px);
+  line-height: 1.18;
+  letter-spacing: -.02em;
+  font-weight: 800;
+}
+.hero h1 .grad {
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lede {
+  margin: 18px 0 0;
+  max-width: 34em;
+  font-size: clamp(16px, 2.2vw, 18.5px);
+  color: var(--text-2);
+}
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.hero-note { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 22px 0 0; padding: 0; list-style: none; font-size: 14.5px; color: var(--muted); }
+.hero-note li { display: flex; align-items: center; gap: 7px; }
+.hero-note svg { color: var(--accent); flex: none; }
+
+/* 产品截图：用 HTML/CSS 摆出来的聊天界面缩影，不是图片。纯装饰，读屏跳过 */
+.shot {
+  position: relative;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.shot-top { display: flex; align-items: center; gap: 8px; padding: 2px 4px 12px; }
+.shot-top .b { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-3); }
+.shot-title { margin-left: 6px; font-size: 12.5px; color: var(--muted); font-family: var(--mono); }
+.shot-body {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.shot-side { display: flex; flex-direction: column; gap: 6px; }
+.shot-side span { height: 9px; border-radius: 5px; background: var(--surface-3); }
+.shot-side span.on { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.shot-side span:nth-child(1) { width: 100%; }
+.shot-side span:nth-child(2) { width: 84%; }
+.shot-side span:nth-child(3) { width: 92%; }
+.shot-side span:nth-child(4) { width: 70%; }
+.shot-chat { display: flex; flex-direction: column; gap: 10px; }
+.bubble { display: flex; gap: 8px; align-items: flex-start; }
+.avatar { flex: none; width: 26px; height: 26px; border-radius: 8px; background: var(--brand-grad); }
+.bubble .txt {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.bubble.me { justify-content: flex-end; }
+.bubble.me .txt { background: var(--accent); border-color: transparent; color: #fff; max-width: 80%; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips span {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.shot-code {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--surface-3);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.typing::after {
+  content: "";
+  display: inline-block;
+  width: 7px; height: 14px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  border-radius: 3px;
+  background: var(--accent);
+  animation: blink 1.1s steps(1, end) infinite;
+}
+@keyframes blink { 50% { opacity: .25; } }
+
+/* ------------------------------------------------------------------ 通用段落 */
+.sec { padding: 56px 0; }
+/* 顶栏是吸顶的，锚点直接跳过去的话标题会被压在它底下 */
+section[id] { scroll-margin-top: 76px; }
+.sec-head { max-width: 46em; }
+.sec-head h2 { margin: 0; font-size: clamp(23px, 3.4vw, 31px); letter-spacing: -.015em; line-height: 1.25; }
+.sec-head p { margin: 12px 0 0; color: var(--text-2); }
+
+/* 实况数据：不吹，就摆数字 */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 34px 0 0;
+  padding: 1px;
+  border-radius: var(--radius-lg);
+  background: var(--border);
+  overflow: hidden;
+}
+@media (min-width: 860px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stat { padding: 22px 20px; background: var(--surface); }
+.stat dt { font-size: 13px; color: var(--muted); }
+.stat dd { margin: 8px 0 0; font-size: 27px; font-weight: 800; letter-spacing: -.02em; }
+.stat dd small { display: block; margin-top: 4px; font-size: 13.5px; font-weight: 400; color: var(--text-2); letter-spacing: 0; }
+
+/* 功能卡片 */
+.cards { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 34px; }
+@media (min-width: 700px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.card {
+  padding: 24px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  transition: transform var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+.card:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.card h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 16.5px; }
+.card h3 svg { flex: none; color: var(--accent); }
+.card p { margin: 0; font-size: 14.8px; color: var(--text-2); }
+.card .tag {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) { .card .tag { color: var(--text-2); } }
+
+/* ------------------------------------------------------------------ 下载安装 */
+.install { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.table-scroll { overflow-x: auto; margin-top: 30px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+table { width: 100%; border-collapse: collapse; min-width: 620px; }
+th, td { padding: 14px 18px; text-align: left; font-size: 14.8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+thead th { font-size: 13px; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: 0; }
+td.os { font-weight: 600; white-space: nowrap; }
+/* 文件名别折行：「…macos-arm64.」/「pkg」这么断开比放不下更难读 */
+.table-scroll td code { white-space: nowrap; }
+
+/* 窄屏上表格没法横着塞下三列，别让它被切一半、还看不出能左右滑 ——
+   改成一条一条的卡片堆叠，表头用 ::before 从 data-label 里取回来。
+   断点定在 860px：再窄下去「怎么用」那一列就会被切掉半句话，
+   而文件名是不折行的，表格的实际宽度比 min-width 更大 */
+@media (max-width: 860px) {
+  .table-scroll { overflow: visible; }
+  table { min-width: 0; }
+  thead { display: none; }
+  tbody tr { display: block; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody td { display: block; padding: 0; border: 0; }
+  tbody td + td { margin-top: 10px; }
+  tbody td:not(.os)::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  td.os { font-size: 15.5px; }
+  .table-scroll td code { white-space: normal; word-break: break-word; }
+}
+td code, p code, li code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  font-family: var(--mono);
+  font-size: 13.2px;
+  word-break: break-all;
+}
+
+.steps { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 30px; }
+@media (min-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+.panel { padding: 22px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.panel h3 { margin: 0 0 4px; font-size: 16px; }
+.panel > p { margin: 0 0 14px; font-size: 14.5px; color: var(--text-2); }
+.panel ul { margin: 12px 0 0; padding-left: 20px; font-size: 14.5px; color: var(--text-2); }
+.panel li { margin: 5px 0; }
+
+.code { position: relative; margin: 0 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.code pre { margin: 0; padding: 13px 62px 13px 16px; overflow-x: auto; }
+.code code { font-family: var(--mono); font-size: 13.2px; color: var(--text); background: none; padding: 0; line-height: 1.7; }
+.copy {
+  position: absolute; top: 6px; right: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;            /* 触摸目标下限，别改小 */
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), background var(--dur) var(--ease-out);
+}
+.copy:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-3); }
+.copy.done { color: var(--ok); border-color: var(--ok); }
+
+.callout {
+  display: flex; gap: 12px;
+  margin-top: 26px; padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 14.6px;
+  color: var(--text-2);
+}
+.callout svg { flex: none; margin-top: 2px; color: var(--warn); }
+.callout.plain svg { color: var(--accent); }   /* 不是警告、只是说明时用这支 */
+.callout b { color: var(--text); }
+
+/* ------------------------------------------------------------------ 已知取舍 */
+.cols { display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 32px; }
+@media (min-width: 900px) { .cols { grid-template-columns: 1fr 1fr; } }
+.note {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.note h3 { margin: 0 0 6px; font-size: 15.5px; }
+.note p { margin: 0; font-size: 14.6px; color: var(--text-2); }
+.note.warn { border-left-color: var(--warn); }
+.note.ok { border-left-color: var(--ok); }
+
+/* ------------------------------------------------------------------ 收尾 */
+.final { text-align: center; padding: 72px 0; }
+.final h2 { margin: 0 auto; max-width: 22em; font-size: clamp(24px, 4vw, 36px); letter-spacing: -.02em; line-height: 1.25; }
+.final p { margin: 16px auto 0; max-width: 40em; color: var(--text-2); }
+.final .cta { justify-content: center; margin-top: 30px; }
+
+footer {
+  padding: 30px 0 40px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text-2);
+}
+.foot-in { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; }
+.foot-in .sp { margin-left: auto; }
+.foot-in a { padding: 10px 0; color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--border-strong); }
+.foot-in a:hover { color: var(--text); border-bottom-color: var(--text); }
+.fine { margin-top: 14px; font-size: 13.4px; color: var(--muted); }
+
+/* 滚动入场：JS 没跑到就整块显示（.js 由 <head> 里的内联脚本挂上），
+   所以禁用脚本时页面照常可读，不会白屏 */
+.js .reveal { opacity: 0; transform: translateY(14px); }
+.js .reveal.in { opacity: 1; transform: none; transition: opacity 420ms var(--ease-out), transform 420ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal, .js .reveal.in { opacity: 1 !important; transform: none !important; }
+}
+/* 打印 / 转 PDF / 某些截图工具不会真的滚动页面，入场动画就没机会触发 ——
+   这些情况下直接把内容摆出来，别印出一片白 */
+@media print { .js .reveal { opacity: 1 !important; transform: none !important; } }
+</style>
+</head>
+
+<body>
+<script>document.documentElement.classList.add('js');</script>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<!-- ------------------------------------------------------------------ 顶栏 -->
+<header class="nav" id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top">
+      <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+        <defs><linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#6366f1"/><stop offset=".55" stop-color="#a855f7"/><stop offset="1" stop-color="#ec4899"/>
+        </linearGradient></defs>
+        <rect width="64" height="64" rx="16" fill="url(#bg1)"/>
+        <path d="M32 15l4.6 11.1L48 30.6l-11.4 4.5L32 46.2l-4.6-11.1L16 30.6l11.4-4.5z" fill="#fff"/>
+      </svg>
+      <span>AI 问答网站</span>
+    </a>
+    <nav class="nav-links" aria-label="页面内导航">
+      <a href="#features">功能</a>
+      <a href="#install">下载安装</a>
+      <a href="#notes">已知取舍</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm" href="https://github.com/weiguang1678/AI-website" target="_blank" rel="noopener">
+      <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="main">
+<div id="top"></div>
+
+<!-- ------------------------------------------------------------------ 首屏 -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> 开源 · 自托管 · <b>在线可体验</b></p>
+
+      <h1>把 AI 问答站<br>跑在<span class="grad">自己机器</span>上</h1>
+
+      <p class="lede">
+        带准入验证的 AI 对话网站：访客得先输入 5 位秘钥才能进，秘钥由你在后台发放，
+        能设有效期和使用次数。接口 Key 只留在本机，不下发到浏览器。
+        安装包自带官方 Node 运行时 —— 双击就能开，不用先装 Node.js。
+      </p>
+
+      <div class="cta">
+        <a class="btn btn-primary" href="https://chat-inon.lumewalk.dpdns.org" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+          打开在线站点
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/weiguang1678/AI-website" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          进入 GitHub 仓库
+        </a>
+      </div>
+
+      <ul class="hero-note">
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> 唯一的运行依赖是 express</li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> 数据全在本机 <code>data/db.json</code></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> 源码基于 Node ≥ 18，装好即用</li>
+      </ul>
+    </div>
+
+    <!-- 界面缩影。纯装饰，读屏会跳过 -->
+    <div class="shot" aria-hidden="true">
+      <div class="shot-top">
+        <span class="b"></span><span class="b"></span><span class="b"></span>
+        <span class="shot-title">127.0.0.1:3000</span>
+      </div>
+      <div class="shot-body">
+        <div class="shot-side">
+          <span class="on"></span><span></span><span></span><span></span>
+        </div>
+        <div class="shot-chat">
+          <div class="bubble">
+            <span class="avatar"></span>
+            <span class="txt">下午好，今天想从哪儿聊起？我可以帮你理清一段代码，也能把一段长文缩成三句话。</span>
+          </div>
+          <div class="chips"><span>帮我读一段代码</span><span>把这段话缩短</span><span>换个说法</span></div>
+          <div class="bubble me"><span class="txt">这个报错什么意思？</span></div>
+          <div class="bubble">
+            <span class="avatar"></span>
+            <span class="txt typing">是端口被占用了，换个口重起就行</span>
+          </div>
+          <div class="shot-code">$ PORT=3001 npm start</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ 实况 -->
+<section class="sec reveal" aria-labelledby="h-stats">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 id="h-stats">先说实况</h2>
+      <p>这是个自己用的项目，数字都摆在明面上 —— 包括不好看的那些。</p>
+    </div>
+
+    <dl class="stats">
+      <div class="stat">
+        <dt>运行依赖</dt>
+        <dd>1 个<small>express。没有别的</small></dd>
+      </div>
+      <div class="stat">
+        <dt>安装包体积</dt>
+        <dd>约 34 MB<small>含自带的 Node v22.20.0</small></dd>
+      </div>
+      <div class="stat">
+        <dt>秘钥组合数</dt>
+        <dd>3355 万<small>32 字母数字集，5 位</small></dd>
+      </div>
+      <div class="stat">
+        <dt>代码签名</dt>
+        <dd>0 次<small>尚未签名 · SignPath 申请中</small></dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ 功能 -->
+<section class="sec" id="features" aria-labelledby="h-feat">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2 id="h-feat">它具体做成了什么样</h2>
+      <p>下面每一条都对应仓库里真实存在的实现，不是设想。</p>
+    </div>
+
+    <div class="cards">
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 秘钥准入</h3>
+        <p>5 位秘钥，支持逐个输入、整体粘贴、自动跳格。后台能设有效期和使用次数，随时停用。验证通过拿到的令牌只活在页面内存里 —— 一刷新就没了，得重新输。</p>
+        <span class="tag">不进 localStorage</span>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 由 AI 先开口</h3>
+        <p>每次进入、每次新建对话，都由模型现生成一句问候，不会重样：服务端记着最近 40 条用过的，生成后还做一次相似度比对（≥ 0.72 判重就重试），实在重复就从 20 句兜底池里挑一句。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg> 快捷提问跟着问候走</h3>
+        <p>问候语下面那排按钮，是照这句问候现场生成的。问候还在路上时，按钮已经先用库里那组摆出来了 —— 不用盯着空白等模型。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg> 流式对话</h3>
+        <p>逐字输出、Markdown 渲染、代码块一键复制；左侧多个历史对话（存在浏览器本地），随时新建或清空。退出登录会连本机保存的对话一起清掉。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 6.1 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3 12.6H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 6.1a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 1.6h.1A2 2 0 0 1 11 .5"/> </svg> 后台全可配</h3>
+        <p>AI 名称、开场白方式、接口地址、API Key、模型名称、系统提示词、随机性、最大回复长度、携带历史条数，都在后台改，还能「测试连接」看具体报错。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg> 图标能换</h3>
+        <p>两种做法：默认图标（圆角渐变块 + 最多 4 个字）或自定义图标（上传图片，在圆角框里拖动缩放选位置）。换完全站生效 —— 标签页、徽标、消息头像、分享卡片。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 18h.01"/></svg> 手机上就是能用</h3>
+        <p>窄屏（≤ 820px）侧栏变抽屉，输入框避让 iPhone 底部安全区，输入框字号提到 16px 免得 iOS 聚焦时把整页放大，触屏上删除按钮常驻显示。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> Key 不出这台机器</h3>
+        <p>API Key 只存在服务端的 <code>data/db.json</code>，接口调用全部在服务端完成，浏览器拿不到它。走 Cloudflare 隧道时访客真实 IP 取 <code>CF-Connecting-IP</code>，在边缘就挡住了伪造。</p>
+      </article>
+
+      <article class="card reveal">
+        <h3><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg> 只依赖官方接口</h3>
+        <p>任何 OpenAI 兼容的 <code>/chat/completions</code> 都能接：DeepSeek、月之暗面、硅基流动、One-API 中转、OpenAI 官方 —— 换个地址和模型名就换了个「大脑」。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ 下载安装 -->
+<section class="sec install" id="install" aria-labelledby="h-install">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2 id="h-install">下载与安装</h2>
+      <p>安装包在 <a href="https://github.com/weiguang1678/AI-website/releases" target="_blank" rel="noopener">Releases</a> 页。
+        每个包都自带一份官方 Node 运行时（v22.20.0），<b>不需要你自己装 Node.js</b>。</p>
+    </div>
+
+    <div class="table-scroll reveal">
+      <table>
+        <caption class="sr-only">各系统对应的安装包</caption>
+        <thead>
+          <tr><th scope="col">系统</th><th scope="col">下载哪个文件</th><th scope="col">怎么用</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="os">Windows 10 / 11</td>
+            <td data-label="下载哪个文件"><code>AI-Website-Setup-1.0.0.exe</code></td>
+            <td data-label="怎么用">双击安装。装到 <code>%LOCALAPPDATA%\AI 网站</code>，自动建好开始菜单和桌面快捷方式，卸载在「设置 → 应用」里</td>
+          </tr>
+          <tr>
+            <td class="os">Windows（免安装）</td>
+            <td data-label="下载哪个文件"><code>AI-Website-1.0.0-win-x64.zip</code></td>
+            <td data-label="怎么用">解压到任意目录，双击里面的 <code>启动网站.cmd</code></td>
+          </tr>
+          <tr>
+            <td class="os">macOS · Apple 芯片</td>
+            <td data-label="下载哪个文件"><code>AI-Website-1.0.0-macos-arm64.pkg</code></td>
+            <td data-label="怎么用"><code>sudo installer -pkg … -target /</code>，装到 <code>/usr/local/ai-website</code></td>
+          </tr>
+          <tr>
+            <td class="os">macOS · Intel</td>
+            <td data-label="下载哪个文件"><code>AI-Website-1.0.0-macos-x64.pkg</code></td>
+            <td data-label="怎么用">同上。免安装版是 <code>…-macos-arm64.tar.gz</code>，解压后双击 <code>启动网站.command</code></td>
+          </tr>
+          <tr>
+            <td class="os">Debian / Ubuntu</td>
+            <td data-label="下载哪个文件"><code>AI-Website-1.0.0-linux-x64.deb</code></td>
+            <td data-label="怎么用"><code>sudo dpkg -i …</code>，装到 <code>/opt/ai-website</code>，应用菜单里会出现「AI 网站」</td>
+          </tr>
+          <tr>
+            <td class="os">其他 Linux</td>
+            <td data-label="下载哪个文件"><code>AI-Website-1.0.0-linux-x64.tar.gz</code></td>
+            <td data-label="怎么用">解压后跑 <code>./ai-website</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="steps">
+      <div class="panel reveal">
+        <h3>从源码跑</h3>
+        <p>已经装了 Node 18 以上，那就两条命令的事。</p>
+        <div class="code">
+          <button class="copy" type="button" data-copy aria-label="复制命令">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <pre><code>git clone https://github.com/weiguang1678/AI-website.git
+cd AI-website
+npm install     # 只装一次
+npm start       # 或 node server.js</code></pre>
+        </div>
+        <ul>
+          <li>前台 <code>http://127.0.0.1:3000</code></li>
+          <li>后台 <code>http://127.0.0.1:3000/admin</code></li>
+          <li>初始管理员密码 <code>admin123</code>，<b>登录后第一件事就是改掉它</b></li>
+          <li>源码跑时数据和配置就在项目目录的 <code>data/</code> 与 <code>config.json</code></li>
+        </ul>
+      </div>
+
+      <div class="panel reveal">
+        <h3>装完之后</h3>
+        <p>建议按这个顺序走一遍，五分钟就能用起来。</p>
+        <div class="code">
+          <button class="copy" type="button" data-copy aria-label="复制命令">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <pre><code># Linux 装 .deb
+sudo dpkg -i AI-Website-1.0.0-linux-x64.deb
+
+# 下载完核对一下校验和
+sha256sum -c SHA256SUMS.txt</code></pre>
+        </div>
+        <ul>
+          <li>打开 <code>/admin</code>，用初始密码登录</li>
+          <li>「<b>AI 设置</b>」填接口地址、API Key、模型名，点「测试连接」确认能通</li>
+          <li>顺手改掉 AI 名称和欢迎语</li>
+          <li>「<b>秘钥管理</b>」生成秘钥，发给要用的人</li>
+          <li>「<b>入口与安全</b>」改管理员密码、改后台路径</li>
+        </ul>
+        <p style="margin-top:14px">安装版把配置和 <code>data/</code> 放在<b>程序目录</b>里；如果程序装在只读位置（macOS 的 <code>/usr/local</code>、Linux 的 <code>/opt</code>），会自动改放到 <code>~/.ai-website</code>。</p>
+      </div>
+    </div>
+
+    <div class="callout reveal">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <div>
+        <b>这些包目前还没做代码签名</b>，所以 Windows 的 SmartScreen 会拦一次（点「更多信息 → 仍要运行」），
+        macOS 的 Gatekeeper 也会提示「无法验证开发者」。想确认下载的文件没被换过，
+        对着 Release 页里的 <code>SHA256SUMS.txt</code> 核一下哈希。
+        <br><br>
+        已经在向 <b>SignPath Foundation</b> 申请面向开源项目的免费代码签名 —— 通过之后，
+        安装包将由 SignPath Foundation 作为发布者签名，上面这两个警告就不再出现。
+        <b>在收到受理通知之前，仍请按未签名文件对待。</b>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ 取舍 -->
+<section class="sec" id="notes" aria-labelledby="h-notes">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2 id="h-notes">已知取舍与边界</h2>
+      <p>使用前值得知道的事。这些不是缺陷说明，是设计时明确选择的结果。</p>
+    </div>
+
+    <div class="cols">
+      <div class="note warn reveal">
+        <h3>不做登录失败限流</h3>
+        <p>秘钥输错可以立刻重试，不会被锁、也不会等待 —— 这是有意保留的。代价是公网部署下秘钥能被持续枚举：
+          请务必用字母数字混合（纯数字只有 10 万种组合），给秘钥设有效期，需要限流就在反向代理层加。</p>
+      </div>
+      <div class="note warn reveal">
+        <h3>秘钥在库里是明文</h3>
+        <p>后台要把秘钥展示给管理员去分发，所以 <code>db.json</code> 里存的是原文，同样的还有 API Key。
+          这也意味着 <code>data/</code> 目录要当敏感文件对待 —— 仓库的 <code>.gitignore</code> 已经把它排除在外了。</p>
+      </div>
+      <div class="note reveal">
+        <h3>电脑关机 = 网站下线</h3>
+        <p>网站跑在你自己的机器上，关机、休眠、断网都会让它不可访问。想要 7×24 就得把它挪到服务器或云主机上。
+          隧道也没有被装成开机自启的后台服务 —— 要装之前先想清楚。</p>
+      </div>
+      <div class="note reveal">
+        <h3>公网访问要自己配隧道</h3>
+        <p>安装包只让服务监听本机 <code>127.0.0.1</code>，不对局域网敞开。要发布到公网，
+          用 Cloudflare Tunnel 建一条隧道即可 —— 不需要公网 IP，也不用在路由器上开端口映射，全程 HTTPS。</p>
+      </div>
+      <div class="note reveal">
+        <h3>只面向单机单用户</h3>
+        <p>没有多账号体系、没有云端同步：访客共用一个准入池，对话历史存在各自的浏览器里。
+          它是「给自己和几个熟人用的站」，不是多租户产品。</p>
+      </div>
+      <div class="note ok reveal">
+        <h3>没有第三方依赖包袱</h3>
+        <p>运行依赖只有 <code>express</code> 一个，前端没有框架、没有 CDN、没有统计脚本，
+          连打包用的 zip 写入器都是仓库里自己写的。想审计代码，需要看的量很小。</p>
+      </div>
+    </div>
+
+    <div class="callout plain reveal" style="margin-top:26px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <div>本项目以 <b>AGPL-3.0</b> 发布：可以自由使用、修改、自建，但如果把改过的版本作为网络服务对外提供，
+        就必须把自己的修改也按 AGPL 开源。全文见仓库根目录的 <code>LICENSE</code>。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------ 收尾 -->
+<section class="final reveal">
+  <div class="wrap">
+    <h2>先看看线上那个，再决定要不要自己搭一个</h2>
+    <p>线上这个就跑在一台普通电脑上。看得顺眼，就去仓库把源码和安装包拿走。</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://chat-inon.lumewalk.dpdns.org" target="_blank" rel="noopener">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+        打开在线站点
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/weiguang1678/AI-website" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        进入 GitHub 仓库
+      </a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-in">
+      <a href="https://github.com/weiguang1678/AI-website" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a href="https://github.com/weiguang1678/AI-website/releases" target="_blank" rel="noopener">下载 Releases</a>
+      <a href="https://chat-inon.lumewalk.dpdns.org" target="_blank" rel="noopener">在线站点</a>
+      <a href="https://github.com/weiguang1678/AI-website/blob/main/PRIVACY.md" target="_blank" rel="noopener">隐私说明</a>
+      <a href="https://github.com/weiguang1678/AI-website/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0</a>
+      <span class="sp"></span>
+      <span>AI 问答网站 · 带秘钥验证的自托管 AI 对话站</span>
+    </div>
+    <p class="fine">这个介绍页是一个不引任何外部依赖的静态单页：没有字体 CDN、没有图标库、没有统计脚本。</p>
+  </div>
+</footer>
+
+<script>
+/* 三件小事，都用原生 API。任何一件失败都不影响页面可读性。 */
+
+// 1. 滚动入场。JS 没跑起来时 <html> 上没有 .js，元素本来就是显示的
+(function () {
+  var items = document.querySelectorAll('.reveal');
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || !('IntersectionObserver' in window)) {
+    for (var i = 0; i < items.length; i++) items[i].classList.add('in');
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      io.unobserve(e.target);        // 只播一次，来回滚动不重放
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+  for (var j = 0; j < items.length; j++) io.observe(items[j]);
+})();
+
+// 2. 顶栏：滚出首屏后补一条下边框
+(function () {
+  var nav = document.getElementById('nav');
+  var onScroll = function () { nav.classList.toggle('stuck', window.scrollY > 8); };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+})();
+
+// 3. 代码块复制。file:// 或 http 下面 navigator.clipboard 可能不可用，退到 execCommand
+(function () {
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var code = btn.parentNode.querySelector('code');
+      if (!code) return;
+      var text = code.textContent;
+      var done = function () {
+        btn.classList.add('done');
+        var old = btn.innerHTML;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+        setTimeout(function () { btn.classList.remove('done'); btn.innerHTML = old; }, 1600);
+      };
+      var fallback = function () {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) { /* 复制不了就算了 */ }
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
