@@ -639,7 +639,7 @@ footer {
       </div>
       <div class="stat">
         <dt>代码签名</dt>
-        <dd>0 次<small>尚未签名 · SignPath 申请中</small></dd>
+        <dd>0 次<small>尚未签名 · 用哈希自己核对</small></dd>
       </div>
     </dl>
   </div>
@@ -805,9 +805,10 @@ sha256sum -c SHA256SUMS.txt</code></pre>
         macOS 的 Gatekeeper 也会提示「无法验证开发者」。想确认下载的文件没被换过，
         对着 Release 页里的 <code>SHA256SUMS.txt</code> 核一下哈希。
         <br><br>
-        已经在向 <b>SignPath Foundation</b> 申请面向开源项目的免费代码签名 —— 通过之后，
-        安装包将由 SignPath Foundation 作为发布者签名，上面这两个警告就不再出现。
-        <b>在收到受理通知之前，仍请按未签名文件对待。</b>
+        申请过 <b>SignPath Foundation</b> 面向开源项目的免费代码签名，<b>没有通过</b> ——
+        该计划的证书以基金会自己的名义作为发布者，所以只签给已经有相当知名度的项目，
+        本项目还太新。对方表示项目获得更广泛认可后欢迎重新申请。
+        在那之前，请在 Release 页核对 <code>SHA256SUMS.txt</code>，别只看文件名对就放行。
       </div>
     </div>
   </div>

@@ -350,6 +350,9 @@ AI website/
 ├── server.js              # 入口：启动服务、挂载路由
 ├── config.json            # 端口、初始管理员密码等（可手动编辑）
 ├── package.json
+├── LICENSE               # AGPL-3.0 全文
+├── PRIVACY.md            # 会收集哪些数据（对外承诺，改行为要同步改它）
+├── CONTRIBUTING.md       # 参与开发前先读这一页
 ├── tools/
 │   ├── launcher.mjs       # 启动器：拉起两个进程、合成日志、退出时一起收
 │   └── make-default-icon.mjs  # 生成出厂的默认图标（自写 PNG 编码，跑一次即可）
@@ -375,6 +378,9 @@ AI website/
 │       ├── app.js     admin.js
 │       ├── icon-default.png   # 出厂默认图标（没配过图标时用它）
 │       └── markdown.js    # 自写的轻量 Markdown 渲染（已做 XSS 转义）
+├── docs/                  # 项目介绍页（GitHub Pages 的站点根目录，不参与打包）
+├── packaging/             # 打包脚本：四平台安装包 + CI 发布流程（不参与打包）
+├── .github/               # issue 模板、Release 自动化
 └── data/
     ├── db.json            # 运行时生成：设置 + 秘钥（请自行备份）
     └── icon.png           # 运行时生成：当前生效的图标
@@ -504,10 +510,16 @@ A：因为预览用的是你当前的管理员登录身份，这样调样式时�
 
 Windows 和 macOS 的安装包目前**没有做代码签名**，所以安装时 SmartScreen 和 Gatekeeper
 会各弹一次警告，放行办法见 [Releases](https://github.com/weiguang1678/AI-website/releases) 页面。
+下载后请对一下 Release 里的 `SHA256SUMS.txt` —— 在签名落实之前，这是唯一能自己核验产物有没有被
+掉包的办法。
 
-已经向 [SignPath Foundation](https://signpath.org/) 申请面向开源项目的免费代码签名服务
-（该机构的证书由它自己作为发布者签发，前提是项目使用 OSI 认可的开源许可、且产物由 CI 构建 ——
-本项目两条都满足）。**在申请通过之前，请不要对外声称安装包已签名。**
+**向 [SignPath Foundation](https://signpath.org/) 申请的免费开源代码签名没有通过。** 对方的理由是：
+该计划签发的证书以基金会自己的名义作为发布者，所以只面向**已经积累起公众信任和知名度**的项目 ——
+他们评估时看的是外部信号（社区采纳如星标、分叉、贡献者；外部的文章、独立讨论或机构支持；
+以及持续活动的证据），本项目目前还不够。对方同时明确表示，**项目获得更广泛认可后欢迎重新申请**。
+
+换句话说，这个签名不是靠代码质量换来的，是靠「有多少人知道这个项目」换来的。本项目还年轻，
+眼下请用 `SHA256SUMS.txt` 校验。**在真正拿到签名之前，任何地方都不要声称安装包已签名。**
 
 ## 许可证
 

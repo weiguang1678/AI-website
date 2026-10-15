@@ -1,0 +1,77 @@
+name: 报错 / 不对劲
+description: 使用中遇到报错、崩溃，或行为和预期不一致
+title: "[问题] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先确认两件事：
+
+        1. README 的「常见问题」里有没有答案；
+        2. 如果怀疑安装包被改动过，先在 Release 页对着 `SHA256SUMS.txt` 核对一下哈希。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 例如 `1.0.0`。后台「概览」页能看到，或者看安装包文件名。
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options:
+        - Windows
+        - macOS（Apple 芯片）
+        - macOS（Intel）
+        - Debian / Ubuntu
+        - 其他 Linux
+        - 从源码直接运行
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: 怎么装的
+      options:
+        - 安装包（.exe / .pkg / .deb）
+        - 免安装压缩包
+        - 从源码跑（npm start）
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 说清楚**你期望的结果**和**实际看到的结果**。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      placeholder: |
+        1. 打开后台，进「秘钥管理」
+        2. ……
+        3. ……
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: |
+        启动窗口里打印的内容、浏览器控制台的报错、或者截图都行。
+
+        **贴之前请先去掉秘钥、API Key、隧道域名这些敏感内容。**
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已经去掉日志里的秘钥和 API Key
+          required: true

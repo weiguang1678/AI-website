@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用问题 / 部署问题
+    url: https://github.com/weiguang1678/AI-website#常见问题
+    about: 先翻 README 的「常见问题」和「从公网访问」两节，多数问题那里有答案
+  - name: 这个程序会收集哪些数据？
+    url: https://github.com/weiguang1678/AI-website/blob/main/PRIVACY.md
+    about: 逐项写在 PRIVACY.md 里，包括不落库的部分
+  - name: 安全漏洞
+    url: https://github.com/weiguang1678
+    about: 请不要开公开 issue，通过主页上的联系方式私下告知

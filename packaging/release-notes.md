@@ -13,10 +13,8 @@
 | Debian / Ubuntu | `AI-Website-<版本>-linux-x64.deb` | `sudo dpkg -i ...`，装到 `/opt/ai-website`，应用菜单里会出现「AI 网站」 |
 | 其他 Linux | `AI-Website-<版本>-linux-x64.tar.gz` | 解压后跑 `./ai-website` |
 
-`SHA256SUMS.txt` 是所有产物的校验和，下载完可以核对一下。
-
-本项目的 Windows / macOS 安装包计划通过 **SignPath Foundation** 提供的开源项目免费代码签名
-（SignPath Foundation is used for code signing this project）进行签名，详见下面的「几点需要知道的」。
+`SHA256SUMS.txt` 是所有产物的校验和。安装包目前**没有代码签名**，所以请务必核对一下 ——
+在签名落实之前，这是唯一能自己确认产物没被掉包的办法。
 
 ## 装完怎么用
 
@@ -29,15 +27,14 @@
 
 ## 几点需要知道的
 
-- **目前的包还没有代码签名。** 本项目已向 **SignPath Foundation** 申请面向开源项目的免费
-  代码签名（SignPath Foundation is used for code signing this project）。等申请通过、签名接进
-  构建流程之后，安装包由 SignPath Foundation 作为发布者签名，下面这两个警告就不会再出现。
-  **在收到受理通知之前，请一律按未签名文件对待。** 所以现在：
+- **这些包都没有代码签名。** 我们向 **SignPath Foundation** 申请过面向开源项目的免费代码签名，
+  **没有通过**：该计划签发的证书以基金会自己的名义作为发布者，所以只签给已经积累起公众信任和
+  知名度的项目，本项目还不够；对方表示项目获得更广泛认可后欢迎重新申请。所以现在：
   - Windows 上第一次运行会弹 SmartScreen 的「Windows 已保护你的电脑」——
     点「更多信息 → 仍要运行」即可；想确认没被换过就对一下 `SHA256SUMS.txt`。
   - macOS 上 .pkg 会被 Gatekeeper 拦（「无法验证开发者」）——
     右键点安装包选「打开」，或者用上面的 `installer` 命令。
-  - 在没有签名之前，请只从本仓库的 Releases 页面下载，并核对 `SHA256SUMS.txt`。
+  - 请只从本仓库的 Releases 页面下载，并核对 `SHA256SUMS.txt`。
 - 程序**不装系统服务、不设开机自启、不改系统设置**。想彻底删干净：
   - Windows：从「设置 → 应用」里卸载（会清掉程序目录、两个快捷方式和卸载项）。
   - Debian / Ubuntu：`sudo dpkg -r ai-website`
